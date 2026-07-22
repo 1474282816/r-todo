@@ -1,0 +1,19 @@
+services:
+  pocketbase:
+    # 使用社区维护的镜像；也可以换成官方二进制自建镜像
+    image: ghcr.io/muchobien/pocketbase:0.22.21
+    container_name: r-todo-pocketbase
+    restart: unless-stopped
+    ports:
+      # 直连局域网 IP:8090 用。
+      # 若改走 1Panel OpenResty 反代 + HTTPS，可改回 "127.0.0.1:8090:8090" 只绑回环。
+      - "8090:8090"
+    volumes:
+      - ./pb_data:/pb_data
+      - ./pb_migrations:/pb_migrations
+      - ./pb_hooks:/pb_hooks
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8090/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

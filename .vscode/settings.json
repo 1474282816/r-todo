@@ -1,0 +1,15 @@
+{
+  "rust-analyzer.linkedProjects": [
+    "apps/desktop/src-tauri/Cargo.toml"
+  ],
+  "dart.flutterSdkPaths": ["auto"],
+  "files.eol": "\n",
+  "editor.formatOnSave": true,
+  "[dart]": {
+    "editor.defaultFormatter": "Dart-Code.dart-code"
+  },
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  },
+  "tailwindCSS.experimental.configFile": "apps/desktop/tailwind.config.js"
+}

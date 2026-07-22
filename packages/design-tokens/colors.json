@@ -1,0 +1,37 @@
+{
+  "$schema": "https://rtodo.dev/schemas/design-tokens.json",
+  "priority": {
+    "high": {
+      "light": "#ef4444",
+      "dark": "#f87171",
+      "description": "高优先级：红色系"
+    },
+    "medium": {
+      "light": "#f59e0b",
+      "dark": "#fbbf24",
+      "description": "中优先级：琥珀色"
+    },
+    "low": {
+      "light": "#9ca3af",
+      "dark": "#6b7280",
+      "description": "低优先级：中性灰"
+    }
+  },
+  "checkbox": {
+    "unchecked": {
+      "light": "#d4d4d8",
+      "dark": "#52525b"
+    },
+    "checked": {
+      "light": "#22c55e",
+      "dark": "#4ade80"
+    }
+  },
+  "background": {
+    "surface": {
+      "light": "rgba(255, 255, 255, 0.72)",
+      "dark": "rgba(24, 24, 27, 0.72)",
+      "description": "毛玻璃表面（Windows Mica）"
+    }
+  }
+}

@@ -1,0 +1,55 @@
+name: r_todo_mobile
+description: r-todo Android / iPad 端
+publish_to: "none"
+version: 0.0.1+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # UI 组件库（极简 shadcn 风）
+  forui: ^0.24.0
+  # 间距工具
+  gap: ^3.0.1
+  # 微动画
+  flutter_animate: ^4.5.2
+
+  # 桌面小组件桥接（Android / iOS）
+  home_widget: ^0.9.0
+
+  # PocketBase 官方 Dart SDK（对齐服务端 0.22）
+  pocketbase: ^0.22.0
+
+  # 凭据本地存储
+  shared_preferences: ^2.3.2
+
+  # 本地存储（SQLite）
+  drift: ^2.20.0
+  sqlite3_flutter_libs: ^0.5.24
+  path_provider: ^2.1.4
+  path: ^1.9.0
+
+  # 本地通知（提前 15 分钟提醒）
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.10.0
+
+  # 重复规则 RRULE 解析
+  rrule: ^0.2.16
+
+  # 状态管理（Riverpod，轻量）
+  flutter_riverpod: ^2.6.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  drift_dev: ^2.20.0
+  build_runner: ^2.4.11
+
+flutter:
+  uses-material-design: true

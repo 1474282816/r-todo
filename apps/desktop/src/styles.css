@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+html,
+body {
+  background: transparent;
+}
+
+/*
+ * 主窗口（透明无边框挂件）：半透明背景 + CSS 圆角
+ * 圆角靠 border-radius + overflow: hidden 保证内容不溢出
+ */
+body[data-view="main"] #root {
+  background: rgba(240, 240, 243, 0.82);
+  border-radius: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  body[data-view="main"] #root {
+    background: rgba(24, 24, 27, 0.82);
+  }
+}
+
+/*
+ * 其他窗口（月视图等，有系统边框）：不透明背景 + 无圆角
+ * 避免圆角尖露白
+ */
+body:not([data-view="main"]) #root {
+  background: transparent;
+}
+
+body {
+  @apply text-neutral-900 dark:text-neutral-100;
+  font-family:
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system,
+    BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 全局：整个应用禁止文本选择（拖动区必须），交互组件在自己那里 override */
+* {
+  user-select: none;
+}
+input,
+textarea {
+  user-select: text;
+}
+
+/* 滚动条极简 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
+}
+
+/* datetime-local 在暗色下能读 */
+@media (prefers-color-scheme: dark) {
+  input[type="datetime-local"] {
+    color-scheme: dark;
+  }
+}

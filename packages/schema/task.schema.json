@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rtodo.dev/schemas/task.json",
+  "title": "Task",
+  "description": "r-todo 任务数据模型（唯一真源；三端与服务端字段以此为准）",
+  "type": "object",
+  "required": ["id", "title", "priority", "remind_offset_min", "sort_order", "created_at", "updated_at"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "PocketBase 自动生成的 15 位记录 ID"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "description": "任务标题（必填）"
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["high", "medium", "low"],
+      "description": "优先级：高 / 中 / 低"
+    },
+    "remind_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "提醒时间（可空）；ISO 8601 UTC"
+    },
+    "remind_offset_min": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 15,
+      "description": "提前提醒的分钟数；默认 15"
+    },
+    "sort_order": {
+      "type": "number",
+      "default": 0,
+      "description": "手动拖拽排序值。数字越小越靠上。新任务插到当前最小值 - 1000 处。拖拽时用相邻两项的中值。"
+    },
+    "deleted": {
+      "type": "boolean",
+      "default": false,
+      "description": "软删除标记。true = 用户已删除，同步后其他客户端也应隐藏。"
+    },
+    "deleted_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "软删除时间；服务端 cron 30 天后清理 tombstone"
+    },
+    "repeat_rule": {
+      "type": ["string", "null"],
+      "description": "RRULE 字符串（RFC 5545）；null 表示不重复"
+    },
+    "completed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "完成时间；null 表示未完成"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "用于 Last-Write-Wins 同步冲突判定"
+    }
+  }
+}

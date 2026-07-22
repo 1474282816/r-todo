@@ -1,39 +1,65 @@
 # r-todo
 
-#### 介绍
-{**以下是 Gitee 平台说明，您可以替换此简介**
-Gitee 是 OSCHINA 推出的基于 Git 的代码托管平台（同时支持 SVN）。专为开发者提供稳定、高效、安全的云端软件开发协作平台
-无论是个人、团队、或是企业，都能够用 Gitee 实现代码托管、项目管理、协作开发。企业项目请看 [https://gitee.com/enterprises](https://gitee.com/enterprises)}
+极简跨端待办工具 —— Windows / Android / iPad 三端 + 桌面常驻 + 自托管同步。
 
-#### 软件架构
-软件架构说明
+## 技术栈
 
+| 端 | 技术 |
+|---|---|
+| Windows | Tauri 2 (Rust) + React + TypeScript + Tailwind CSS |
+| Android / iPad | Flutter |
+| 后端 | PocketBase (Docker) |
 
-#### 安装教程
+## 目录结构
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+```
+r-todo/
+├── apps/
+│   ├── desktop/          # Tauri 2 桌面端
+│   └── mobile/           # Flutter 移动端
+├── packages/
+│   ├── schema/           # 数据模型 JSON Schema（唯一真源）
+│   ├── api-contract/     # 同步协议约定
+│   └── design-tokens/    # 视觉规范（颜色、间距）
+├── server/               # PocketBase 部署配置
+├── docs/                 # 需求 / 架构 / ADR
+└── scripts/              # 便利脚本
+```
 
-#### 使用说明
+## 环境要求
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+| 工具 | 用途 | 检查命令 |
+|---|---|---|
+| Node.js ≥ 20 | Tauri 前端 | `node --version` |
+| pnpm ≥ 10 | 包管理 | `pnpm --version` |
+| Rust (stable) | Tauri 后端 | `rustc --version` |
+| Flutter (stable) | 移动端 | `flutter --version` |
+| Docker | 部署 PocketBase（**在 Linux 服务器上**，非 Windows 开发机） | `docker --version` |
 
-#### 参与贡献
+Windows 编译 Tauri 还需要：**Microsoft C++ Build Tools** 和 **WebView2 Runtime**（Win11 已内置）。
 
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
+## 快速开始
 
+```powershell
+# 装依赖
+pnpm install
 
-#### 特技
+# 起 PocketBase (Docker)
+pnpm dev:server
 
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
+# 起桌面端
+pnpm dev:desktop
+
+# 起移动端（需已启动模拟器或连真机）
+pnpm dev:mobile
+```
+
+## 文档
+
+- [需求文档 v1.0](docs/requirements.md)
+- [技术栈说明](docs/tech-stack.md)
+- [架构决策记录 (ADR)](docs/decisions/)
+
+## 状态
+
+🚧 骨架搭建完成，业务代码待实现。

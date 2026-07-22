@@ -1,0 +1,7 @@
+{
+  "name": "@r-todo/schema",
+  "version": "0.0.1",
+  "private": true,
+  "description": "r-todo 数据模型 JSON Schema（唯一真源）",
+  "files": ["*.json"]
+}

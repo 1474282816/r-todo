@@ -1,0 +1,57 @@
+# ────── Rust ──────
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# ────── Node ──────
+node_modules/
+dist/
+.turbo/
+*.log
+.pnpm-store/
+
+# ────── Flutter ──────
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.framework/
+**/ios/Flutter/Flutter.podspec
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/android/.gradle/
+**/android/local.properties
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+
+# ────── PocketBase 数据（不提交运行时数据） ──────
+server/pb_data/
+
+# ────── Tauri ──────
+apps/desktop/src-tauri/target/
+apps/desktop/dist/
+
+# ────── IDE ──────
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.iml
+*.swp
+
+# ────── OS ──────
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ────── Env / Secrets ──────
+.env
+.env.local
+*.pem
+*.key
