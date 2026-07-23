@@ -60,23 +60,24 @@ if ($Version -ne $currentVersion) {
 
     git add $confPath $pkgPath $cargoPath
     git commit -m "chore: bump version to $Version"
-    Write-Host "✅ 版本号已更新并提交" -ForegroundColor Green
+    git push
+    Write-Host "✅ 版本号已更新并推送" -ForegroundColor Green
 }
 
 # ── 4. 打包 ──
 if (-not $SkipBuild) {
-    Write-Host "🔨 开始打包..." -ForegroundColor Cyan
+    Write-Host "🔨 开始打包 (NSIS)..." -ForegroundColor Cyan
     Set-Location apps/desktop
     pnpm tauri build
     Set-Location ../..
 
-    $releaseDir = "apps/desktop/src-tauri/target/release/bundle"
-    if (Test-Path $releaseDir) {
-        Write-Host "`n📦 打包产物:" -ForegroundColor Green
-        Get-ChildItem $releaseDir -Recurse -File -Include *.msi, *.exe | ForEach-Object {
-            $size = [math]::Round($_.Length / 1MB, 1)
-            Write-Host "  $($_.Name) ($size MB)" -ForegroundColor White
-        }
+    $setupExe = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe" -ErrorAction SilentlyContinue
+    if ($setupExe) {
+        $size = [math]::Round($setupExe.Length / 1MB, 1)
+        Write-Host "`n📦 打包产物: $($setupExe.Name) ($size MB)" -ForegroundColor Green
+        Write-Host "   $($setupExe.FullName)" -ForegroundColor Gray
+    } else {
+        Write-Host "⚠️  未找到安装包，请检查打包日志" -ForegroundColor Yellow
     }
 }
 
