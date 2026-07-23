@@ -24,7 +24,7 @@ import { useTaskStore } from "./lib/store";
 import { restoreSession } from "./lib/sync";
 import { embedToDesktop, isEmbeddedPreference } from "./lib/system";
 import type { Task } from "./lib/types";
-import { silentCheckUpdate, getUpdateStatus, subscribeUpdateStatus } from "./lib/updater";
+import { silentCheckUpdate, subscribeUpdateStatus } from "./lib/updater";
 
 /**
  * r-todo 桌面端主界面
