@@ -157,15 +157,22 @@ if (-not $SkipRelease) {
 
             Write-Host "[INFO] Uploading $($setupExe.Name)..." -ForegroundColor Cyan
             try {
-                $result = curl.exe -s -X POST "$uploadUrl" `
+                $rawOutput = curl.exe -s -X POST "$uploadUrl" `
                     -H "Authorization: token $token" `
-                    -F "file=@$($setupExe.FullName)" | ConvertFrom-Json
+                    -F "file=@$($setupExe.FullName)"
 
-                if ($result.browser_download_url) {
-                    Write-Host "[OK] Asset uploaded" -ForegroundColor Green
-                    Write-Host "  URL: $($result.browser_download_url)" -ForegroundColor Gray
+                # Extract JSON from output (may have extra chars)
+                $jsonMatch = [regex]::Match($rawOutput, '\{.*\}')
+                if ($jsonMatch.Success) {
+                    $result = $jsonMatch.Value | ConvertFrom-Json
+                    if ($result.browser_download_url) {
+                        Write-Host "[OK] Asset uploaded" -ForegroundColor Green
+                        Write-Host "  URL: $($result.browser_download_url)" -ForegroundColor Gray
+                    } else {
+                        Write-Host "[WARN] Upload response missing URL" -ForegroundColor Yellow
+                    }
                 } else {
-                    Write-Host "[WARN] Upload may have failed" -ForegroundColor Yellow
+                    Write-Host "[WARN] Could not parse upload response" -ForegroundColor Yellow
                 }
             } catch {
                 Write-Host "[WARN] Upload failed: $_" -ForegroundColor Yellow
