@@ -1,44 +1,46 @@
 {
-  "$schema": "https://schema.tauri.app/config/2.0.0",
-  "productName": "r-todo",
-  "version": "0.0.1",
-  "identifier": "dev.rtodo.desktop",
-  "build": {
-    "beforeDevCommand": "pnpm dev",
-    "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../dist"
-  },
-  "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "r-todo",
-        "width": 380,
-        "height": 620,
-        "minWidth": 320,
-        "minHeight": 480,
-        "decorations": false,
-        "transparent": true,
-        "resizable": true,
-        "shadow": false,
-        "alwaysOnBottom": false
-      }
-    ],
-    "security": {
-      "csp": null
-    }
-  },
-  "bundle": {
-    "active": true,
-    "targets": "nsis",
-    "icon": [
-      "icons/icon.ico"
-    ]
-  },
-  "plugins": {
-    "sql": {
-      "preload": ["sqlite:r-todo.db"]
-    }
-  }
+    "$schema":  "https://schema.tauri.app/config/2.0.0",
+    "productName":  "r-todo",
+    "version":  "0.0.2",
+    "identifier":  "dev.rtodo.desktop",
+    "build":  {
+                  "beforeDevCommand":  "pnpm dev",
+                  "devUrl":  "http://localhost:1420",
+                  "beforeBuildCommand":  "pnpm build",
+                  "frontendDist":  "../dist"
+              },
+    "app":  {
+                "windows":  [
+                                {
+                                    "label":  "main",
+                                    "title":  "r-todo",
+                                    "width":  380,
+                                    "height":  620,
+                                    "minWidth":  320,
+                                    "minHeight":  480,
+                                    "decorations":  false,
+                                    "transparent":  true,
+                                    "resizable":  true,
+                                    "shadow":  false,
+                                    "alwaysOnBottom":  false
+                                }
+                            ],
+                "security":  {
+                                 "csp":  null
+                             }
+            },
+    "bundle":  {
+                   "active":  true,
+                   "targets":  "nsis",
+                   "icon":  [
+                                "icons/icon.ico"
+                            ]
+               },
+    "plugins":  {
+                    "sql":  {
+                                "preload":  [
+                                                "sqlite:r-todo.db"
+                                            ]
+                            }
+                }
 }
