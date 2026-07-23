@@ -68,7 +68,10 @@ if ($Version -ne $currentVersion) {
     $pkg.version = $Version
     $pkg | ConvertTo-Json -Depth 10 | Set-Content $pkgPath -NoNewline
 
-    (Get-Content $cargoPath -Raw) -replace 'version = ".*?"', "version = `"$Version`"" | Set-Content $cargoPath -NoNewline
+    $cargoContent = Get-Content $cargoPath -Raw
+    # Only replace version in [package] section (first occurrence)
+    $cargoContent = $cargoContent -replace '(?s)(\[package\].*?version = )"[^"]*"', "`$1`"$Version`""
+    Set-Content $cargoPath -Value $cargoContent -NoNewline
 
     git add $confPath $pkgPath $cargoPath
     git commit -m "chore: bump version to $Version"

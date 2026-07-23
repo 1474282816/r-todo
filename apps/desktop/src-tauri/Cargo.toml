@@ -1,7 +1,7 @@
 [package]
 name = "r-todo-desktop"
 version = "0.0.2"
-description = "r-todo Windows 桌面�?
+description = "r-todo Windows 桌面端"
 authors = ["you"]
 edition = "2021"
 
@@ -10,14 +10,14 @@ name = "r_todo_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "0.0.2", features = [] }
+tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
-tauri = { version = "0.0.2", features = ["tray-icon"] }
+tauri = { version = "2.1", features = ["tray-icon"] }
 tauri-plugin-shell = "2.0"
 
 # 数据存储
-tauri-plugin-sql = { version = "0.0.2", features = ["sqlite"] }
+tauri-plugin-sql = { version = "2.2", features = ["sqlite"] }
 
 # 系统通知
 tauri-plugin-notification = "2.2"
@@ -25,26 +25,27 @@ tauri-plugin-notification = "2.2"
 # 位置尺寸记忆
 tauri-plugin-window-state = "2.2"
 
-# 开机自�?tauri-plugin-autostart = "2.2"
+# 开机自启
+tauri-plugin-autostart = "2.2"
 
-# 单实例（避免开机自�?+ 手动启动出两个窗口）
+# 单实例（避免开机自启 + 手动启动出两个窗口）
 tauri-plugin-single-instance = "2.2"
 
-# 文件对话�?+ 文件读写（用于导入导出）
+# 文件对话框 + 文件读写（用于导入导出）
 tauri-plugin-dialog = "2.2"
 tauri-plugin-fs = "2.2"
 
 # 通用
-serde = { version = "0.0.2", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-chrono = { version = "0.0.2", features = ["serde"] }
-uuid = { version = "0.0.2", features = ["v4", "serde"] }
-tokio = { version = "0.0.2", features = ["rt-multi-thread", "sync", "time", "macros"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 log = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 # WorkerW 挂载所需 Win32 API
-windows = { version = "0.0.2", features = [
+windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Shell",
