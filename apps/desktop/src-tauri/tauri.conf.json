@@ -32,6 +32,7 @@
     "bundle":  {
                    "active":  true,
                    "targets":  "nsis",
+                   "createUpdaterArtifacts":  true,
                    "icon":  [
                                 "icons/icon.ico"
                             ]
@@ -41,6 +42,15 @@
                                 "preload":  [
                                                 "sqlite:r-todo.db"
                                             ]
-                            }
+                            },
+                    "updater":  {
+                                    "pubkey":  "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE5QzMxNjYwNTM5OEUwNTgKUldSWTRKaFRZQmJER1h4d1ZMYVA3dnluSjdpN2RmMldJR09hUFFlZDY0SlFqckkvRUJhZDJVZXAK",
+                                    "endpoints":  [
+                                                      "https://gitee.com/renrunqi/r-todo/raw/master/apps/desktop/latest.json"
+                                                  ],
+                                    "windows":  {
+                                                    "installMode":  "passive"
+                                                }
+                                }
                 }
 }

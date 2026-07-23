@@ -1,0 +1,11 @@
+{
+  "version": "0.0.2",
+  "notes": "r-todo v0.0.2 - 系统托盘支持",
+  "pub_date": "2026-07-23T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "",
+      "url": "https://gitee.com/renrunqi/r-todo/releases/download/v0.0.2/r-todo_0.0.2_x64-setup.exe"
+    }
+  }
+}

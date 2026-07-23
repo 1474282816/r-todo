@@ -24,6 +24,7 @@ import { useTaskStore } from "./lib/store";
 import { restoreSession } from "./lib/sync";
 import { embedToDesktop, isEmbeddedPreference } from "./lib/system";
 import type { Task } from "./lib/types";
+import { silentCheckUpdate, getUpdateStatus, subscribeUpdateStatus } from "./lib/updater";
 
 /**
  * r-todo 桌面端主界面
@@ -43,6 +44,7 @@ export default function App() {
 
   const [editing, setEditing] = useState<Task | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [hasUpdate, setHasUpdate] = useState(false);
   const quickAddRef = useRef<QuickAddHandle>(null);
 
   const openMonth = useCallback(() => {
@@ -75,6 +77,14 @@ export default function App() {
   // 启动时恢复登录 + 后台同步
   useEffect(() => {
     restoreSession().catch((e) => console.warn("restore session failed:", e));
+  }, []);
+
+  // 启动时静默检查更新
+  useEffect(() => {
+    silentCheckUpdate().catch(() => {});
+    return subscribeUpdateStatus((status) => {
+      setHasUpdate(status.state === "available");
+    });
   }, []);
 
   useHotkeys({
@@ -193,6 +203,9 @@ export default function App() {
             onClick={() => setSettingsOpen(true)}
           >
             <Settings2 size={14} />
+            {hasUpdate && (
+              <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
+            )}
           </IconButton>
         </div>
       </div>

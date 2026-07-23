@@ -49,6 +49,7 @@
     "autostart:allow-is-enabled",
     "core:tray:default",
     "core:tray:allow-set-tooltip",
-    "core:tray:allow-set-menu"
+    "core:tray:allow-set-menu",
+    "updater:default"
   ]
 }

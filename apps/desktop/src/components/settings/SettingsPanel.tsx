@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Cloud, CloudOff, Download, Loader2, Upload, X } from "lucide-react";
+import { Cloud, CloudOff, Download, Loader2, RefreshCw, Upload, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { exportTasks, pickAndPreviewImport, type ExportFormat } from "../../lib/io_ui";
@@ -29,6 +29,14 @@ import {
   getDefaultOffset,
   setDefaultOffset,
 } from "../../lib/reminder";
+import {
+  checkForUpdate,
+  downloadAndInstall,
+  getAppVersion,
+  relaunchApp,
+  subscribeUpdateStatus,
+  type UpdateStatus,
+} from "../../lib/updater";
 import { cn } from "../../lib/cn";
 
 interface Props {
@@ -57,7 +65,12 @@ export function SettingsPanel({ open, onClose }: Props) {
   const [pwdInput, setPwdInput] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
 
+  // 更新状态
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: "idle" });
+  const [appVersion, setAppVersion] = useState("...");
+
   useEffect(() => subscribeStatus(setSync), []);
+  useEffect(() => subscribeUpdateStatus(setUpdateStatus), []);
 
   useEffect(() => {
     if (!toast) return;
@@ -70,6 +83,11 @@ export function SettingsPanel({ open, onClose }: Props) {
       isAutostartEnabled().then(setAutostartState);
     }
   }, [open]);
+
+  // 获取版本号
+  useEffect(() => {
+    getAppVersion().then(setAppVersion);
+  }, []);
 
   const toggleEmbed = async () => {
     setBusy(true);
@@ -378,6 +396,96 @@ export function SettingsPanel({ open, onClose }: Props) {
                   导入 (JSON / .ics / TickTick CSV)
                 </ActionButton>
               </div>
+            </div>
+
+            {/* 检查更新 */}
+            <div className="mt-3 border-t border-black/5 pt-3 dark:border-white/5">
+              <div className="mb-1.5 flex items-center justify-between px-1">
+                <div className="text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+                  关于
+                </div>
+                {updateStatus.state === "available" && (
+                  <div className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                )}
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg px-3 py-2.5">
+                <div className="text-xs text-neutral-800 dark:text-neutral-100">
+                  版本 {appVersion}
+                </div>
+                <ActionButton
+                  onClick={checkForUpdate}
+                  disabled={updateStatus.state === "checking" || updateStatus.state === "downloading"}
+                >
+                  {updateStatus.state === "checking" ? (
+                    <>
+                      <Loader2 size={11} className="animate-spin" />
+                      检查中…
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw size={11} />
+                      检查更新
+                    </>
+                  )}
+                </ActionButton>
+              </div>
+
+              {updateStatus.state === "not-available" && (
+                <div className="mt-1 rounded-md bg-emerald-500/10 px-3 py-2 text-[11px] text-emerald-600 dark:text-emerald-400">
+                  已是最新版本
+                </div>
+              )}
+
+              {updateStatus.state === "available" && (
+                <div className="mt-1 space-y-1.5 rounded-md border border-blue-500/30 bg-blue-500/10 p-3">
+                  <div className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
+                    发现新版本 v{updateStatus.version}
+                  </div>
+                  {updateStatus.body && (
+                    <div className="whitespace-pre-wrap text-[11px] text-neutral-600 dark:text-neutral-400">
+                      {updateStatus.body}
+                    </div>
+                  )}
+                  <ActionButton onClick={downloadAndInstall}>
+                    <Download size={11} />
+                    下载并安装
+                  </ActionButton>
+                </div>
+              )}
+
+              {updateStatus.state === "downloading" && (
+                <div className="mt-1 rounded-md bg-blue-500/10 px-3 py-2 text-[11px] text-blue-600 dark:text-blue-400">
+                  <div className="flex items-center gap-1.5">
+                    <Loader2 size={11} className="animate-spin" />
+                    下载中…
+                    {updateStatus.total > 0 && (
+                      <span>
+                        {Math.round((updateStatus.downloaded / 1024 / 1024) * 10) / 10} /{" "}
+                        {Math.round((updateStatus.total / 1024 / 1024) * 10) / 10} MB
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {updateStatus.state === "ready" && (
+                <div className="mt-1 space-y-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3">
+                  <div className="text-xs text-emerald-700 dark:text-emerald-300">
+                    更新已就绪，重启生效
+                  </div>
+                  <ActionButton onClick={relaunchApp}>
+                    <RefreshCw size={11} />
+                    立即重启
+                  </ActionButton>
+                </div>
+              )}
+
+              {updateStatus.state === "error" && (
+                <div className="mt-1 rounded-md bg-red-500/10 px-3 py-2 text-[11px] text-red-500">
+                  更新失败：{updateStatus.message}
+                </div>
+              )}
             </div>
 
             {toast && (

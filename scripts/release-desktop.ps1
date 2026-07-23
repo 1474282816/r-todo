@@ -97,6 +97,37 @@ if (-not $SkipBuild) {
         $sizeMB = [math]::Round($setupExe.Length / 1MB, 1)
         Write-Host ""
         Write-Host "[OK] Bundle: $($setupExe.Name) ($sizeMB MB)" -ForegroundColor Green
+
+        # Read signature file
+        $sigFile = $setupExe.FullName -replace '\.exe$', '.exe.sig'
+        $signature = ""
+        if (Test-Path $sigFile) {
+            $signature = (Get-Content $sigFile -Raw).Trim()
+            Write-Host "[OK] Signature found" -ForegroundColor Green
+        } else {
+            Write-Host "[WARN] .sig file not found: $sigFile" -ForegroundColor Yellow
+        }
+
+        # Generate update manifest
+        Write-Host "[INFO] Generating update manifest..." -ForegroundColor Cyan
+        $setupUrl = "https://gitee.com/$owner/$repo/releases/download/v$Version/$($setupExe.Name)"
+        $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+        $manifest = @{
+            version = $Version
+            notes = "r-todo v$Version"
+            pub_date = $pubDate
+            platforms = @{
+                "windows-x86_64" = @{
+                    signature = $signature
+                    url = $setupUrl
+                }
+            }
+        }
+
+        $manifestPath = "apps/desktop/latest.json"
+        $manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath -NoNewline
+        Write-Host "[OK] Update manifest: $manifestPath" -ForegroundColor Green
     } else {
         Write-Host "[WARN] Setup exe not found" -ForegroundColor Yellow
     }
@@ -188,8 +219,34 @@ if (-not $SkipRelease) {
             }
         }
 
+        # Upload latest.json to release
+        $manifestPath = "apps/desktop/latest.json"
+        if (Test-Path $manifestPath) {
+            $releaseId = if ($releaseExists) { $existing.id } else { $release.id }
+            $uploadUrl = "$apiBase/releases/$releaseId/attach_files"
+
+            Write-Host "[INFO] Uploading latest.json..." -ForegroundColor Cyan
+            try {
+                curl.exe -s -X POST "$uploadUrl" `
+                    -H "Authorization: token $token" `
+                    -F "file=@$manifestPath"
+                Write-Host "[OK] latest.json uploaded" -ForegroundColor Green
+            } catch {
+                Write-Host "[WARN] latest.json upload failed: $_" -ForegroundColor Yellow
+            }
+        }
+
         Write-Host "[LINK] https://gitee.com/$owner/$repo/releases/tag/$tagName" -ForegroundColor Gray
     }
+}
+
+# Commit and push latest.json
+$manifestPath = "apps/desktop/latest.json"
+if (Test-Path $manifestPath) {
+    git add $manifestPath
+    git commit -m "chore: update manifest to v$Version" 2>$null
+    git push 2>$null
+    Write-Host "[OK] Manifest committed and pushed" -ForegroundColor Green
 }
 
 Write-Host ""
