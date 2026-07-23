@@ -46,6 +46,9 @@
     "notification:allow-notify",
     "autostart:allow-enable",
     "autostart:allow-disable",
-    "autostart:allow-is-enabled"
+    "autostart:allow-is-enabled",
+    "core:tray:default",
+    "core:tray:allow-set-tooltip",
+    "core:tray:allow-set-menu"
   ]
 }
