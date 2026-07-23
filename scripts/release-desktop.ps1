@@ -141,6 +141,7 @@ if (-not $SkipRelease) {
                 name = $releaseName
                 body = $releaseBody
                 prerelease = $false
+                target_commitish = "master"
             } | ConvertTo-Json -Depth 10
 
             $release = Invoke-RestMethod -Uri "$apiBase/releases" -Method Post `
