@@ -87,7 +87,12 @@ if (-not $SkipBuild) {
     pnpm tauri build
     Set-Location ../..
 
-    $setupExe = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe" -ErrorAction SilentlyContinue
+    # Find the latest setup exe for this version
+    $setupExe = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/nsis/r-todo_${Version}_x64-setup.exe" -ErrorAction SilentlyContinue
+    if (-not $setupExe) {
+        # Fallback: get any setup exe
+        $setupExe = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+    }
     if ($setupExe) {
         $sizeMB = [math]::Round($setupExe.Length / 1MB, 1)
         Write-Host ""
