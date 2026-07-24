@@ -69,8 +69,8 @@ if ($Version -ne $currentVersion) {
     $pkg | ConvertTo-Json -Depth 10 | Set-Content $pkgPath -NoNewline
 
     $cargoContent = Get-Content $cargoPath -Raw
-    # Only replace version in [package] section (first occurrence)
-    $cargoContent = $cargoContent -replace '(?s)(\[package\].*?version = )"[^"]*"', "`$1`"$Version`""
+    # Only replace version in [package] section (first occurrence, single line)
+    $cargoContent = $cargoContent -replace '(\[package\][^\[]*?version = )"[^"]*"', "`$1`"$Version`""
     Set-Content $cargoPath -Value $cargoContent -NoNewline
 
     git add $confPath $pkgPath $cargoPath
