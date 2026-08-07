@@ -1,11 +1,11 @@
 {
     "platforms":  {
                       "windows-x86_64":  {
-                                             "signature":  "",
-                                             "url":  "https://gitee.com/renrunqi/r-todo/releases/download/v0.0.3/r-todo_0.0.3_x64-setup.exe"
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTUTdGa1IxcHpSUkhuMGhGbkRwSHgyZ1dzMnBJYjZuVmxrQXZyOExrNEVUVjhKamh2YmhTcStBS0NmcE8yVHIrMTZCWjM3UXZNNTZYd3pzcmxxUlZwN0RxYitUeXBLVWdjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0Nzk4NDg4CWZpbGU6ci10b2RvXzAuMC4yX3g2NC1zZXR1cC5leGUKaTBWOFk0RllnNU1XWjhwVk9VRGRMS0J0eUx0Z3FtQmVTc0RPMDhWNFlhb3dldGxVdEJiRXVtWlp3QldlNXh1SEluZ2NNdkdtY0diVms5VytreUdPQ3c9PQo=",
+                                             "url":  "https://gitee.com/renrunqi/r-todo/releases/download/v0.0.4/r-todo_0.0.2_x64-setup.exe"
                                          }
                   },
-    "pub_date":  "2026-07-24T03:10:20Z",
-    "version":  "0.0.3",
-    "notes":  "r-todo v0.0.3"
+    "pub_date":  "2026-08-07T16:24:25Z",
+    "version":  "0.0.4",
+    "notes":  "r-todo v0.0.4"
 }
