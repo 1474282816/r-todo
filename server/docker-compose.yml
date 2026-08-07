@@ -4,6 +4,17 @@ services:
     image: ghcr.io/muchobien/pocketbase:0.22.21
     container_name: r-todo-pocketbase
     restart: unless-stopped
+    # 覆盖镜像默认入口：首次启动自动创建 admin（幂等，已存在则跳过），再启动服务。
+    # ADMIN_EMAIL / ADMIN_PASSWORD 可在 .env 或 shell 环境里覆盖，默认见 environment。
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /usr/local/bin/pocketbase admin create "$${ADMIN_EMAIL}" "$${ADMIN_PASSWORD}" --dir=/pb_data 2>/dev/null || \
+        /usr/local/bin/pocketbase superuser upsert "$${ADMIN_EMAIL}" "$${ADMIN_PASSWORD}" --dir=/pb_data 2>/dev/null || true
+        exec /usr/local/bin/pocketbase serve --http=0.0.0.0:8090 --dir=/pb_data --publicDir=/pb_public --hooksDir=/pb_hooks
+    environment:
+      ADMIN_EMAIL: "${ADMIN_EMAIL:-admin@rtodo.local}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin123456}"
     ports:
       # 直连局域网 IP:8090 用。
       # 若改走 1Panel OpenResty 反代 + HTTPS，可改回 "127.0.0.1:8090:8090" 只绑回环。

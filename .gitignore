@@ -31,6 +31,7 @@ build/
 
 # ────── PocketBase 数据（不提交运行时数据） ──────
 server/pb_data/
+server/.credentials
 
 # ────── Tauri ──────
 apps/desktop/src-tauri/target/
