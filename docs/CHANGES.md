@@ -1,5 +1,43 @@
 # 改动日志
 
+## 2026-08-07 · 桌面嵌入重做：WorkerW 挂载（Win+D 不收起）
+
+### 背景
+
+M2 的"嵌入桌面"一直是妥协实现（`WS_EX_TOOLWINDOW` + `HWND_BOTTOM`，按 Win+D 会被收起）。
+Backlog OPT-002 记录过 4 个失败方案（subclass、替换 WndProc、挂 Progman+WS_CHILD 等）并标"放弃"。
+
+### 结论
+
+**Tauri 完全能做到**，之前失败是算法没试对：正确做法不是挂 Progman，而是向 Progman 发
+`0x052C` 让 explorer 创建"空 WorkerW（壁纸层）"，然后 `SetParent` 挂到它上面，且**保持
+WS_POPUP、不设 WS_CHILD**（MSDN 明确 SetParent 不改这两种样式）。挂载后窗口不再是顶层
+窗口，Win+D 只最小化顶层窗口，所以收不走它。外部证据：electron-as-wallpaper（同款算法）、
+tauri issue #10345（Tauri 2 用户实测可行）、tauri issue #4261（官方确认需自实现）。
+
+### 改动
+
+- `apps/desktop/src-tauri/src/desktop_embed.rs`（重写）：
+  - `find_worker_w()`：`FindWindowW("Progman")` → `SendMessageTimeoutW(0x052C)` →
+    `EnumWindows` 找含 `SHELLDLL_DefView` 的 WorkerW 之后那个空 WorkerW（fallback 链：
+    任意空 WorkerW → 图标层 WorkerW）
+  - `embed_to_desktop`：`SetParent(hwnd, workerw)`（不加 WS_CHILD）→
+    `SetWindowPos(SWP_FRAMECHANGED|SWP_SHOWWINDOW)` 刷新 →
+    `SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2)` 恢复 DPI（跨进程 SetParent 会 forced reset）
+  - `unembed_from_desktop`：`SetParent(hwnd, NULL)` 恢复顶层 + 恢复 `WS_EX_APPWINDOW`
+- `apps/desktop/src-tauri/Cargo.toml`：windows 增加 `Win32_UI_HiDpi` feature
+- `docs/backlog/OPT-002-embed-strategy-switch.md`：状态"放弃"→"已重开并实现"，记录新方案
+  与实机验证清单
+
+### 状态
+
+✅ `cargo check` 编译通过；**运行时行为需用户实机验证**（Win10 20H2 + Win11，验证清单见 OPT-002）。
+
+### 已知限制（后续项）
+
+- explorer 崩溃/重启、壁纸切换 → WorkerW 重建，挂载丢失，后续加低频 `GetParent` 检查自动重挂
+- WebView2 输入焦点在个别机器可能异常（tauri#10345 用户实测可用）
+
 ## 2026-07-18 · 用户睡觉时的一次性推进（M2~M5）
 
 ### 用户上下文

@@ -55,3 +55,6 @@ Desktop.ini
 .env.local
 *.pem
 *.key
+
+# ────── Reasonix（AI 工作目录） ──────
+.reasonix/
