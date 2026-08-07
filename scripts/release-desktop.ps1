@@ -14,6 +14,14 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# ── UTF-8 读写（PS 5.1 的 Get-Content/Set-Content 默认 ANSI，会损坏中文注释） ──
+function Read-Utf8([string]$Path) {
+    return [System.IO.File]::ReadAllText($Path, [System.Text.UTF8Encoding]::new($false))
+}
+function Write-Utf8([string]$Path, [string]$Content) {
+    [System.IO.File]::WriteAllText($Path, $Content, [System.Text.UTF8Encoding]::new($false))
+}
+
 # Parse repo info from git remote
 $remoteUrl = git remote get-url origin
 if ($remoteUrl -match 'gitee\.com[:/]([^/]+)/([^/.]+)') {
@@ -38,7 +46,7 @@ $pkgPath = "apps/desktop/package.json"
 $cargoPath = "apps/desktop/src-tauri/Cargo.toml"
 
 function Get-CurrentVersion {
-    $conf = Get-Content $confPath | ConvertFrom-Json
+    $conf = Read-Utf8 $confPath | ConvertFrom-Json
     return $conf.version
 }
 
@@ -60,22 +68,23 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
 if ($Version -ne $currentVersion) {
     Write-Host "[INFO] Bumping: $currentVersion -> $Version" -ForegroundColor Yellow
 
-    $conf = Get-Content $confPath -Raw | ConvertFrom-Json
+    $conf = Read-Utf8 $confPath | ConvertFrom-Json
     $conf.version = $Version
-    $conf | ConvertTo-Json -Depth 10 | Set-Content $confPath -NoNewline
+    $conf | ConvertTo-Json -Depth 10 | Write-Utf8 $confPath
 
-    $pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json
+    $pkg = Read-Utf8 $pkgPath | ConvertFrom-Json
     $pkg.version = $Version
-    $pkg | ConvertTo-Json -Depth 10 | Set-Content $pkgPath -NoNewline
+    $pkg | ConvertTo-Json -Depth 10 | Write-Utf8 $pkgPath
 
-    $cargoContent = Get-Content $cargoPath -Raw
+    $cargoContent = Read-Utf8 $cargoPath
     # Only replace version in [package] section (first occurrence, single line)
     $cargoContent = $cargoContent -replace '(\[package\][^\[]*?version = )"[^"]*"', "`$1`"$Version`""
-    Set-Content $cargoPath -Value $cargoContent -NoNewline
+    Write-Utf8 $cargoPath $cargoContent
 
     git add $confPath $pkgPath $cargoPath
     git commit -m "chore: bump version to $Version"
-    git push
+    git push 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Host "[ERR] push failed" -ForegroundColor Red; exit 1 }
     Write-Host "[OK] Version bumped and pushed" -ForegroundColor Green
 }
 
@@ -85,13 +94,18 @@ if (-not $SkipBuild) {
     Write-Host "[INFO] Building (NSIS)..." -ForegroundColor Cyan
     Set-Location apps/desktop
     pnpm tauri build
+    $buildExit = $LASTEXITCODE
     Set-Location ../..
+    if ($buildExit -ne 0) {
+        Write-Host "[ERR] tauri build failed (exit $buildExit)" -ForegroundColor Red
+        exit 1
+    }
 
-    # Find the latest setup exe for this version
+    # Find the setup exe for this version（找不到必须报错，绝不 fallback 到旧包）
     $setupExe = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/nsis/r-todo_${Version}_x64-setup.exe" -ErrorAction SilentlyContinue
     if (-not $setupExe) {
-        # Fallback: get any setup exe
-        $setupExe = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+        Write-Host "[ERR] Bundle not found for v$Version（构建失败或文件名不符）" -ForegroundColor Red
+        exit 1
     }
     if ($setupExe) {
         $sizeMB = [math]::Round($setupExe.Length / 1MB, 1)
@@ -126,7 +140,7 @@ if (-not $SkipBuild) {
         }
 
         $manifestPath = "apps/desktop/latest.json"
-        $manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath -NoNewline
+        $manifest | ConvertTo-Json -Depth 10 | Write-Utf8 $manifestPath
         Write-Host "[OK] Update manifest: $manifestPath" -ForegroundColor Green
     } else {
         Write-Host "[WARN] Setup exe not found" -ForegroundColor Yellow
@@ -244,9 +258,13 @@ if (-not $SkipRelease) {
 $manifestPath = "apps/desktop/latest.json"
 if (Test-Path $manifestPath) {
     git add $manifestPath
-    git commit -m "chore: update manifest to v$Version" 2>$null
-    git push 2>$null
-    Write-Host "[OK] Manifest committed and pushed" -ForegroundColor Green
+    git commit -m "chore: update manifest to v$Version" 2>&1 | Out-Null
+    git push 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[WARN] manifest push failed" -ForegroundColor Yellow
+    } else {
+        Write-Host "[OK] Manifest committed and pushed" -ForegroundColor Green
+    }
 }
 
 Write-Host ""
