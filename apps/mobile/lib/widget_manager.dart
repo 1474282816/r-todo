@@ -9,8 +9,9 @@ import '../data/task.dart';
 
 /// 保存当前未完成任务到 widget 存储并刷新小组件
 Future<void> updateWidgetData(List<TodoTask> tasks) async {
-  // 只取未完成的任务，最多 6 条
-  final active = tasks.where((t) => !t.isCompleted).take(6).toList();
+  // 存全部未完成任务（不截断），Provider 按 widget 高度决定显示行数，
+  // 右上角"剩余 X 项"才能反映真实未完成数
+  final active = tasks.where((t) => !t.isCompleted).toList();
 
   final jsonTasks = active.map((t) => {
     'id': t.id,
