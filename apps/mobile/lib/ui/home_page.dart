@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 import 'package:gap/gap.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../data/task.dart';
 import '../state/task_store.dart';
+import '../update/update_checker.dart';
 import 'constants.dart';
 import 'settings_page.dart';
 import 'task_editor_sheet.dart';
@@ -19,6 +24,104 @@ class HomePage extends ConsumerStatefulWidget {
 class _HomePageState extends ConsumerState<HomePage> {
   final _inputController = TextEditingController();
   Priority _quickPriority = Priority.low;
+
+  @override
+  void initState() {
+    super.initState();
+    // 启动后延迟检查更新，避免影响首帧
+    Future.delayed(const Duration(seconds: 2), _checkForUpdate);
+  }
+
+  /// 检查远端版本，发现新版则提示下载安装
+  Future<void> _checkForUpdate() async {
+    final info = await UpdateChecker.fetch();
+    if (info == null || !mounted) return;
+    final pkg = await PackageInfo.fromPlatform();
+    if (!isNewerVersion(info.version, pkg.version)) return;
+    if (!mounted) return;
+
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('发现新版本'),
+        content: Text('R待办 v${info.version} 已发布${info.notes.isNotEmpty ? '\n\n${info.notes}' : ''}\n\n是否下载更新？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('稍后')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('立即更新')),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return;
+    await _downloadAndInstall(info);
+  }
+
+  /// 下载 APK 并拉起系统安装器
+  Future<void> _downloadAndInstall(UpdateInfo info) async {
+    final progress = ValueNotifier<double>(0);
+    final error = ValueNotifier<String>('');
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => ValueListenableBuilder<double>(
+        valueListenable: progress,
+        builder: (ctx, p, _) => ValueListenableBuilder<String>(
+          valueListenable: error,
+          builder: (ctx, e, _) => AlertDialog(
+            title: const Text('正在下载更新'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(value: p),
+                const Gap(8),
+                Text('${(p * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(fontSize: 12)),
+                if (e.isNotEmpty) ...[
+                  const Gap(8),
+                  Text(e, style: const TextStyle(fontSize: 12, color: Colors.red)),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final path = await UpdateChecker.download(
+        info.url,
+        onProgress: (p) => progress.value = p,
+      );
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // 关闭进度弹窗
+      const ch = MethodChannel('r_todo/install');
+      try {
+        await ch.invokeMethod('installApk', path);
+      } catch (_) {
+        // 未授权安装未知来源：引导去设置页开启
+        if (!mounted) return;
+        final open = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('需要安装权限'),
+            content: const Text('请允许“R待办”安装未知来源应用，然后重新下载安装。'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('去设置')),
+            ],
+          ),
+        );
+        if (open == true) {
+          await ch.invokeMethod('openInstallSettings');
+        }
+      }
+    } catch (e) {
+      error.value = '下载失败：$e';
+      // 1.5 秒后自动关闭进度弹窗
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      });
+    }
+  }
 
   @override
   void dispose() {

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 更新 APK 下载到应用内部缓存目录，FileProvider 从这里对外提供 -->
+    <cache-path name="apk" path="."/>
+</paths>

@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 网络访问权限（同步需要，release 包必须显式声明） -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 安装未知来源 APK（更新安装需要） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <application
         android:label="R待办"
         android:name="${applicationName}"
@@ -28,6 +30,17 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <!-- FileProvider：更新 APK 安装时对外提供文件 URI -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <receiver android:name=".widget.TodoWidgetProvider"
             android:exported="true">

@@ -44,6 +44,12 @@ dependencies:
   # 状态管理（Riverpod，轻量）
   flutter_riverpod: ^2.6.1
 
+  # 应用版本号（更新检测）
+  package_info_plus: ^8.0.0
+
+  # HTTP（更新检测/下载）
+  http: ^1.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
