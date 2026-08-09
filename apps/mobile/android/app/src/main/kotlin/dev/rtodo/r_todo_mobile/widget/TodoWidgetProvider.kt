@@ -58,14 +58,14 @@ open class TodoWidgetProvider : HomeWidgetProvider() {
         val views = RemoteViews(context.packageName, R.layout.todo_widget_layout)
         val count = tasks.length()
 
-        // 按 widget 实际高度决定显示行数（行高已压缩，2 cells≈145dp 可容纳 6 行）
+        // 按 widget 实际高度决定显示行数（行高约 21dp，3x2≈145dp 容纳 5 行）
         val heightDp = appWidgetManager
             .getAppWidgetOptions(widgetId)
             .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110)
         val maxRows = when {
-          heightDp >= 130 -> 6 // 3x2 及以上：显示全部 6 行
-          heightDp >= 110 -> 4 // 2x2（110dp）：紧凑 4 行
-          else -> 3            // 更小
+          heightDp >= 130 -> 5 // 3x2 及以上：5 行，行距舒适
+          heightDp >= 110 -> 3 // 2x2（110dp）：紧凑 3 行
+          else -> 2            // 更小
         }
         val shown = minOf(count, maxRows)
 

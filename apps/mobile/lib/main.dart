@@ -31,6 +31,9 @@ class _RTodoAppState extends ConsumerState<RTodoApp> {
           ref.read(taskListProvider.notifier).refreshFromDb;
       await SyncService.instance.restoreSession();
       await ref.read(taskListProvider.notifier).refreshFromDb();
+      // 启动时主动刷新小组件数据（任务无变更时 widget 不会自行更新，
+      // 否则应用升级/重装后小组件仍显示旧数据）
+      await updateWidgetData(ref.read(taskListProvider));
       // 注册小组件交互回调（点击小组件跳转）
       await initWidget();
     });
