@@ -1,5 +1,6 @@
 // 桌面小组件数据管理
 // 在每次本地数据变更后调用 updateWidgetData 刷新小组件。
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:home_widget/home_widget.dart';
@@ -18,9 +19,21 @@ Future<void> updateWidgetData(List<TodoTask> tasks) async {
   }).toList();
 
   await HomeWidget.saveWidgetData('tasks', jsonEncode(jsonTasks));
-  await HomeWidget.updateWidget(
-    androidName: 'dev.rtodo.r_todo_mobile.widget.TodoWidgetProvider',
-  );
+  // 更新所有尺寸变体（2x2/3x2/4x2/4x3），否则未更新的变体不刷新
+  await Future.wait([
+    HomeWidget.updateWidget(
+      qualifiedAndroidName: 'dev.rtodo.r_todo_mobile.widget.TodoWidgetProvider',
+    ),
+    HomeWidget.updateWidget(
+      qualifiedAndroidName: 'dev.rtodo.r_todo_mobile.widget.TodoWidget2x2Provider',
+    ),
+    HomeWidget.updateWidget(
+      qualifiedAndroidName: 'dev.rtodo.r_todo_mobile.widget.TodoWidget4x2Provider',
+    ),
+    HomeWidget.updateWidget(
+      qualifiedAndroidName: 'dev.rtodo.r_todo_mobile.widget.TodoWidget4x3Provider',
+    ),
+  ]);
 }
 
 /// 在 App 启动时调用，注册 widget 交互回调（可选）

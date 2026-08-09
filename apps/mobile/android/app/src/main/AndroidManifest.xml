@@ -35,7 +35,31 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider"
-                android:resource="@xml/todo_widget_info" />
+                android:resource="@xml/todo_widget_info_3x2" />
+        </receiver>
+        <receiver android:name=".widget.TodoWidget2x2Provider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/todo_widget_info_2x2" />
+        </receiver>
+        <receiver android:name=".widget.TodoWidget4x2Provider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/todo_widget_info_4x2" />
+        </receiver>
+        <receiver android:name=".widget.TodoWidget4x3Provider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/todo_widget_info_4x3" />
         </receiver>
 
         <!-- Don't delete the meta-data below.

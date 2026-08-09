@@ -5,6 +5,7 @@ import 'package:forui/forui.dart';
 import 'state/task_store.dart';
 import 'sync/sync_service.dart';
 import 'ui/home_page.dart';
+import 'widget_manager.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,6 +31,8 @@ class _RTodoAppState extends ConsumerState<RTodoApp> {
           ref.read(taskListProvider.notifier).refreshFromDb;
       await SyncService.instance.restoreSession();
       await ref.read(taskListProvider.notifier).refreshFromDb();
+      // 注册小组件交互回调（点击小组件跳转）
+      await initWidget();
     });
   }
 
