@@ -17,7 +17,7 @@ r-todo 是跨端待办应用（Tauri 2 桌面端 + Flutter 移动端 + PocketBas
 ### 目标
 
 - 桌面端内置 streamable HTTP MCP server，监听 `127.0.0.1:18765/mcp`，随应用进程启停。
-- 设置面板新增「MCP 服务器」开关（默认关）；开启时展示 token 与客户端注册命令，一键复制。
+- 设置面板新增「MCP 服务器」开关（默认关）；开启时展示 token 与**各主流 agent 的配置模板**（Claude Code / Claude Desktop / opencode / codex），一键复制。
 - 暴露工具：`list_tasks` / `create_task` / `update_task` / `complete_task` / `uncomplete_task` / `delete_task`。
 - AI 的写操作与 UI **实时一致**：Rust 侧写入后通过 Tauri 事件通知前端重拉，无需轮询。
 - AI 的写操作**进入现有同步链路**：写入 `pending_ops` 队列，由现有 flush 逻辑同步到 PocketBase，手机端自动受益。
@@ -26,7 +26,8 @@ r-todo 是跨端待办应用（Tauri 2 桌面端 + Flutter 移动端 + PocketBas
 ### 非目标
 
 - 不做 CLI 子命令（MCP 已覆盖，CLI 的解析脆弱性无收益）。
-- 不做自动改写用户 `~/.claude.json` / `claude_desktop_config.json`（侵入用户全局配置，只提供复制注册命令）。
+- 不做自动改写用户 `~/.claude.json` / `claude_desktop_config.json` 等任意 agent 全局配置（侵入且各 agent 格式升级易失效，只提供复制模板）。
+- 不做 Claude Code 插件自动注册（多 agent 使用场景下收益仅覆盖单一客户端，模板复制已覆盖配置成本，不引入第二套机制）。
 - 不做手机端 MCP（移动端无常驻进程场景）。
 - 不做应用内嵌 AI 对话（独立需求，不在本迭代）。
 
@@ -115,9 +116,9 @@ Claude Code / Claude Desktop
 - Tauri command（`invoke_handler` 注册）：
   - `get_mcp_status() -> { enabled, token_masked, port }`
   - `set_mcp_enabled(bool)` —— 开时若无 token 则生成（rand 32 字节 hex）；启停 server。
-  - `rotate_token()` —— 重新生成（旧 token 立即失效）。
-  - `get_mcp_register_command()` —— 返回注册命令/配置文本（见 5.5）。
-- token 首次生成时机：开关开启时。token 不落 UI 日志。
+  - `rotate_token()` —— 主动重置（旧 token 立即失效）。**token 默认稳定不自动轮换**：多 agent 场景下已配好的客户端无需维护；只有用户主动「重置 token」才变更。
+  - `get_mcp_client_templates()` —— 返回各 agent 的配置模板文本（见 5.5）。
+- token 首次生成时机：开关开启时。token 不落 UI 日志（可脱敏展示）。
 
 ### 5.5 设置面板 UI（`src/components/settings/SettingsPanel.tsx`）
 
@@ -125,10 +126,11 @@ Claude Code / Claude Desktop
 - 开启后展示：
   - 状态行：`http://127.0.0.1:18765/mcp` + 端口占用/启动错误提示。
   - token：脱敏显示（`rtok_****…ab12`）+「复制」按钮。
-  - 注册命令区（可复制）：
+  - 「配置模板」区：各 agent 模板，标签切换 + 一键复制（数据来自 `get_mcp_client_templates()`）：
     - Claude Code：`claude mcp add r-todo --transport http http://127.0.0.1:18765/mcp --header "Authorization: Bearer <token>"`
     - Claude Desktop：`claude_desktop_config.json` 的 `mcpServers` JSON 片段（url + headers）。
-  - 「重置 token」按钮（旋转后旧配置失效，需重新复制）。
+    - opencode / codex：各自配置文件的 `mcp` / `mcp_servers` 片段（实现时按官方文档格式逐项核实并硬编码模板）。
+  - 「重置 token」按钮（重置后需在已配置的 agent 处同步更新，提示文案说明）。
 
 ## 6. MCP 工具契约
 
@@ -159,7 +161,7 @@ Task 对象 JSON 字段与前端 `src/lib/types.ts` 一致：
 - Bearer token 必检（恒时比较），无 token/错误 token → 401。
 - 开关**默认关闭**；未启用时端口不监听。
 - 工具集只覆盖 tasks 表读写，无文件、无 shell、无任意 SQL。
-- token 轮换机制应对泄露。
+- token 轮换机制应对泄露（主动重置，默认保持稳定）。
 - 不做应用级登录态复用（MCP 认证与应用同步登录解耦，避免把同步凭证暴露给本地服务）。
 
 ## 8. 边界情况与错误处理
@@ -172,7 +174,7 @@ Task 对象 JSON 字段与前端 `src/lib/types.ts` 一致：
 | 同步未登录 / 离线 | 本地写入照常，pending_ops 等下次 flush（现有逻辑） |
 | AI 与用户同时编辑同一任务 | Last-Write-Wins 由现有同步处理；UI 经事件刷新后展示最新 |
 | 带提醒任务被 AI 创建 | 前端重拉时 `refreshFromDb` 重排提醒（复用 hydrate 逻辑） |
-| token 泄露 | 设置面板「重置 token」，旧配置立即失效 |
+| token 泄露 | 设置面板「重置 token」，旧配置立即失效；已配置 agent 需同步更新一次 |
 | AI 请求畸形 JSON-RPC | 按协议返回错误，不 panic |
 
 ## 9. 测试策略
