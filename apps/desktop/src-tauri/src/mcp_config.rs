@@ -97,6 +97,16 @@ mod tests {
     }
 
     #[test]
+    fn corrupted_json_returns_default() {
+        let path = std::env::temp_dir().join(format!("rtodo_mcp_test_corrupt_{}", std::process::id()));
+        std::fs::write(&path, "{not valid json").expect("write");
+        let cfg = load_from(&path);
+        assert!(!cfg.enabled);
+        assert!(cfg.token.is_empty());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn save_then_load_roundtrip() {
         let path = std::env::temp_dir().join(format!("rtodo_mcp_test_round_{}", std::process::id()));
         let cfg = McpConfig { enabled: true, token: "rtok_abc123".into() };

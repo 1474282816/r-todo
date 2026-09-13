@@ -44,11 +44,19 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "net"] }
 log = "0.4"
 
 # MCP 配置 token 生成
 rand = "0.10"
+
+# MCP server（streamable HTTP）
+# rusqlite 0.40 需要 libsqlite3-sys ^0.38，与 tauri-plugin-sql(sqlx) 的 libsqlite3-sys 0.28 冲突；
+# 降到 0.31（同用 libsqlite3-sys 0.28）以共存
+rmcp = { version = "3.3", features = ["transport-streamable-http-server"] }
+axum = "0.8"
+tokio-util = "0.7"
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 [target.'cfg(windows)'.dependencies]
 # WorkerW 挂载所需 Win32 API
@@ -59,3 +67,7 @@ windows = { version = "0.58", features = [
     "Win32_UI_Controls",
     "Win32_Graphics_Dwm",
 ] }
+
+[dev-dependencies]
+# .json() 需要 json feature（default-features = false 时默认没有）
+reqwest = { version = "0.12", default-features = false, features = ["json"] }

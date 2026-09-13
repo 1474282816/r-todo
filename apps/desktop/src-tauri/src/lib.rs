@@ -3,6 +3,7 @@
 mod db;
 mod desktop_embed;
 mod mcp_config;
+mod mcp_server;
 mod month_window;
 mod notifier;
 mod snap;
@@ -114,6 +115,11 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            app.manage(mcp_server::McpState::default());
+            if let Err(e) = mcp_server::start_mcp(app.handle()) {
+                eprintln!("[mcp] start failed: {e}");
+            }
+
             let _ = window;
             Ok(())
         })
@@ -127,6 +133,8 @@ pub fn run() {
             month_window::open_month_window,
             mcp_config::get_mcp_status,
             mcp_config::get_mcp_client_templates,
+            mcp_server::set_mcp_enabled,
+            mcp_server::rotate_mcp_token,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
