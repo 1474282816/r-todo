@@ -2,6 +2,7 @@
 
 mod db;
 mod desktop_embed;
+mod mcp_config;
 mod month_window;
 mod notifier;
 mod snap;
@@ -124,6 +125,8 @@ pub fn run() {
             snap::get_snap_target,
             snap::get_collapse_target,
             month_window::open_month_window,
+            mcp_config::get_mcp_status,
+            mcp_config::get_mcp_client_templates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

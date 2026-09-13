@@ -47,6 +47,9 @@ uuid = { version = "1", features = ["v4", "serde"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 log = "0.4"
 
+# MCP 配置 token 生成
+rand = "0.10"
+
 [target.'cfg(windows)'.dependencies]
 # WorkerW 挂载所需 Win32 API
 windows = { version = "0.58", features = [
