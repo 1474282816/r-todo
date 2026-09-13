@@ -135,6 +135,7 @@ pub fn run() {
             mcp_config::get_mcp_client_templates,
             mcp_server::set_mcp_enabled,
             mcp_server::rotate_mcp_token,
+            mcp_server::get_mcp_running,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
