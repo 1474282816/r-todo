@@ -185,7 +185,7 @@ export async function enqueueOp(
   await db.execute(
     `INSERT INTO pending_ops (op_type, collection, record_id, payload, created_at)
      VALUES ($1, $2, $3, $4, $5)`,
-    ["tasks", opType, recordId, payload ? JSON.stringify(payload) : null, Date.now()],
+    [opType, "tasks", recordId, payload ? JSON.stringify(payload) : null, Date.now()],
   );
 }
 

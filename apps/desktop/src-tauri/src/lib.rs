@@ -4,6 +4,7 @@ mod db;
 mod desktop_embed;
 mod mcp_config;
 mod mcp_server;
+mod mcp_tools;
 mod month_window;
 mod notifier;
 mod snap;

@@ -203,7 +203,10 @@ export async function flushPendingOps(): Promise<void> {
     for (const op of ops) {
       try {
         if (op.op_type === "create") {
-          await pb.collection("tasks").create(JSON.parse(op.payload ?? "{}"));
+          const payload = JSON.parse(op.payload ?? "{}") as Record<string, unknown>;
+          // MCP 等外部写入的队列条目不含 user，这里补上当前登录用户
+          payload.user = pb.authStore.record?.id;
+          await pb.collection("tasks").create(payload);
         } else if (op.op_type === "update") {
           await pb.collection("tasks").update(op.record_id, JSON.parse(op.payload ?? "{}"));
         } else if (op.op_type === "delete") {

@@ -7,10 +7,20 @@ use axum::{
     middleware::{from_fn, Next},
     response::Response,
 };
-use rmcp::{ServerHandler, model::{Implementation, ServerCapabilities, ServerInfo}};
+use rmcp::handler::server::tool::parse_json_object;
+use rmcp::model::{
+    CallToolRequestParams, CallToolResponse, CallToolResult, ListToolsResult, Tool,
+};
+use rmcp::service::{RequestContext, RoleServer};
 use rmcp::transport::streamable_http_server::{
     StreamableHttpServerConfig, StreamableHttpService, session::never::NeverSessionManager,
 };
+use rmcp::schemars::JsonSchema;
+use rmcp::model::ErrorCode;
+use rmcp::ErrorData as McpError;
+use rmcp::ServerHandler;
+use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
+use serde::Deserialize;
 use tauri::{Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
@@ -31,6 +41,111 @@ impl ServerHandler for McpHandler {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions("r-todo 待办：列出、创建、编辑、完成、删除任务")
             .with_server_info(Implementation::new("r-todo-desktop", env!("CARGO_PKG_VERSION")))
+    }
+
+    fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ListToolsResult, rmcp::ErrorData>> + Send + '_ {
+        std::future::ready(Ok(ListToolsResult {
+            tools: tools(),
+            next_cursor: None,
+            ..Default::default()
+        }))
+    }
+
+    fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<CallToolResponse, McpError>> + Send + '_ {
+        let name = request.name.to_string();
+        let args = request.arguments.unwrap_or_default();
+        let this = self.clone();
+        Box::pin(async move {
+            // 错误分级：parse 失败 → 协议级 invalid_params（parse_json_object 已返回）；
+            // db 基础设施失败 → internal_error；业务失败（任务不存在/校验）→ 工具级 structured_error（AI 可见）
+            let outcome: Result<CallToolResult, McpError> = match name.as_str() {
+                "list_tasks" => {
+                    let input: ListTasksInput = parse_json_object(args)?;
+                    let conn = this.db().map_err(infra)?;
+                    let list = crate::mcp_tools::list_tasks(
+                        &conn,
+                        input.filter.as_deref().unwrap_or("active"),
+                        input.keyword.as_deref(),
+                        input.priority.as_deref(),
+                    )
+                    .map_err(infra)?;
+                    Ok(CallToolResult::structured(serde_json::to_value(list).expect("json")))
+                }
+                "create_task" => {
+                    let input: CreateTaskInput = parse_json_object(args)?;
+                    let mut conn = this.db().map_err(infra)?;
+                    match crate::mcp_tools::create_task(
+                        &mut conn,
+                        &input.title,
+                        input.priority.as_deref(),
+                        input.remind_at.as_deref(),
+                        input.remind_offset_min,
+                        input.repeat_rule.as_deref(),
+                    ) {
+                        Ok(t) => {
+                            this.notify_changed();
+                            Ok(CallToolResult::structured(serde_json::to_value(t).expect("json")))
+                        }
+                        Err(msg) => Ok(CallToolResult::structured_error(serde_json::json!({ "error": msg }))),
+                    }
+                }
+                "update_task" => {
+                    let input: UpdateTaskInput = parse_json_object(args)?;
+                    let mut conn = this.db().map_err(infra)?;
+                    // 三态：absent=不变(null→清除、有值→设置)，空串在数据层视为清除
+                    let remind_at = input.remind_at.as_ref().map(|v| v.as_deref());
+                    let repeat_rule = input.repeat_rule.as_ref().map(|v| v.as_deref());
+                    match crate::mcp_tools::update_task(
+                        &mut conn,
+                        &input.id,
+                        input.title.as_deref(),
+                        input.priority.as_deref(),
+                        remind_at,
+                        repeat_rule,
+                    ) {
+                        Ok(t) => {
+                            this.notify_changed();
+                            Ok(CallToolResult::structured(serde_json::to_value(t).expect("json")))
+                        }
+                        Err(msg) => Ok(CallToolResult::structured_error(serde_json::json!({ "error": msg }))),
+                    }
+                }
+                "complete_task" | "uncomplete_task" => {
+                    let input: IdInput = parse_json_object(args)?;
+                    let mut conn = this.db().map_err(infra)?;
+                    match crate::mcp_tools::set_completed(&mut conn, &input.id, name == "complete_task") {
+                        Ok(t) => {
+                            this.notify_changed();
+                            Ok(CallToolResult::structured(serde_json::to_value(t).expect("json")))
+                        }
+                        Err(msg) => Ok(CallToolResult::structured_error(serde_json::json!({ "error": msg }))),
+                    }
+                }
+                "delete_task" => {
+                    let input: IdInput = parse_json_object(args)?;
+                    let mut conn = this.db().map_err(infra)?;
+                    match crate::mcp_tools::soft_delete(&mut conn, &input.id) {
+                        Ok(()) => {
+                            this.notify_changed();
+                            Ok(CallToolResult::structured(serde_json::json!({ "deleted": true, "id": input.id })))
+                        }
+                        Err(msg) => Ok(CallToolResult::structured_error(serde_json::json!({ "error": msg }))),
+                    }
+                }
+                other => Ok(CallToolResult::structured_error(serde_json::json!({
+                    "error": format!("未知工具: {other}")
+                }))),
+            };
+            Ok(outcome?.into())
+        })
     }
 }
 
@@ -254,6 +369,137 @@ pub fn rotate_mcp_token(app: tauri::AppHandle) -> Result<crate::mcp_config::McpC
     Ok(cfg)
 }
 
+/// 基础设施错误（db 打开/查询失败）→ 协议级错误
+fn infra(e: String) -> McpError {
+    McpError::new(ErrorCode::INTERNAL_ERROR, e, None)
+}
+
+// ── 工具输入结构（schemars 自动生成 JSON Schema） ──
+// 注：schemars 非直接依赖，derive 生成代码默认引用顶层 `schemars` crate，
+// 需用 crate 属性指向 rmcp 的重导出（rmcp::schemars）
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct ListTasksInput {
+    /// active=未完成（默认）| completed=已完成 | all=全部
+    pub filter: Option<String>,
+    /// 标题包含关键字
+    pub keyword: Option<String>,
+    /// 按优先级过滤: high | medium | low
+    pub priority: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct CreateTaskInput {
+    /// 任务标题（必填，非空）
+    pub title: String,
+    pub priority: Option<String>,
+    /// 提醒时间 ISO8601
+    pub remind_at: Option<String>,
+    /// 提前提醒分钟数（默认 15）
+    pub remind_offset_min: Option<i64>,
+    /// RRULE 重复规则
+    pub repeat_rule: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct IdInput {
+    pub id: String,
+}
+
+/// 区分「缺省/absent / null / 有值」的自定义反序列化器：
+/// 缺省 → 外层 None（数据层=不变）；null → Some(None)（=清除）；有值 → Some(Some(s))（=设置）
+/// 注：不能写成 `Option<Option<String>>` 默认反序列化（null 会塌缩成外层 None，无法区分 null 与缺省）。
+/// 用 deserialize_with 而非 serde with：schemars derive 会把 `with` 的模块路径当 schema 类型解析导致编译失败。
+mod nullable_opt {
+    use serde::de::{self, Deserializer, Visitor};
+    use serde::Deserialize;
+    use std::fmt;
+
+    pub fn deserialize<'de, D>(d: D) -> Result<Option<Option<String>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = Option<Option<String>>;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a string or null")
+            }
+            fn visit_some<D2>(self, d: D2) -> Result<Self::Value, D2::Error>
+            where
+                D2: Deserializer<'de>,
+            {
+                Ok(Some(Option::<String>::deserialize(d)?))
+            }
+            fn visit_none<E>(self) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Some(None))
+            }
+        }
+        d.deserialize_option(V)
+    }
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+pub struct UpdateTaskInput {
+    pub id: String,
+    pub title: Option<String>,
+    pub priority: Option<String>,
+    /// 传 null 清除提醒（缺省=不变）
+    #[serde(default, deserialize_with = "nullable_opt::deserialize")]
+    pub remind_at: Option<Option<String>>,
+    /// 传 null 清除重复规则（缺省=不变）
+    #[serde(default, deserialize_with = "nullable_opt::deserialize")]
+    pub repeat_rule: Option<Option<String>>,
+}
+
+/// Tool 为 #[non_exhaustive]（跨 crate 禁止 struct 表达式构造），且 rmcp 未实现
+/// Into<Arc<JsonObject>>（RootSchema 不能直接传），故 schema_for! 序列化后 Arc::new(JsonObject)
+/// 走官方 builder API（Tool::new + with_title）。
+fn tool_def(name: &'static str, title: &'static str, description: &'static str) -> Tool {
+    let schema = match name {
+        "list_tasks" => rmcp::schemars::schema_for!(ListTasksInput),
+        "create_task" => rmcp::schemars::schema_for!(CreateTaskInput),
+        "update_task" => rmcp::schemars::schema_for!(UpdateTaskInput),
+        "complete_task" | "uncomplete_task" | "delete_task" => rmcp::schemars::schema_for!(IdInput),
+        _ => unreachable!(),
+    };
+    let input_schema = Arc::new(
+        serde_json::to_value(&schema)
+            .expect("schema json")
+            .as_object()
+            .expect("schema object")
+            .clone(),
+    );
+    Tool::new(name, description, input_schema).with_title(title)
+}
+
+fn tools() -> Vec<Tool> {
+    vec![
+        tool_def("list_tasks", "列出待办", "按条件列出待办任务：filter(active/completed/all)、keyword 标题包含、priority 过滤"),
+        tool_def("create_task", "新建待办", "新建一个待办任务，置顶显示。title 必填；支持优先级、提醒时间、RRULE 重复规则"),
+        tool_def("update_task", "编辑待办", "编辑任务标题/优先级/提醒时间/重复规则；remind_at 传 null 清除提醒"),
+        tool_def("complete_task", "完成待办", "将任务标记为已完成"),
+        tool_def("uncomplete_task", "恢复待办", "将已完成任务恢复为未完成"),
+        tool_def("delete_task", "删除待办", "删除任务（软删除，可随同步恢复）"),
+    ]
+}
+
+impl McpHandler {
+    fn db(&self) -> Result<rusqlite::Connection, String> {
+        crate::mcp_tools::open_db(&self.db_path)
+    }
+
+    fn notify_changed(&self) {
+        (self.notify)();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,5 +641,19 @@ mod tests {
         let err = state.error_slot.read().expect("error").clone().expect("error recorded");
         assert!(err.contains("18771"), "错误信息应含端口: {err}");
         blocker.abort();
+    }
+
+    #[test]
+    fn tools_are_complete_and_schemas_valid() {
+        let ts = tools();
+        let names: Vec<&str> = ts.iter().map(|t| t.name.as_ref()).collect();
+        assert_eq!(
+            names,
+            vec!["list_tasks", "create_task", "update_task", "complete_task", "uncomplete_task", "delete_task"]
+        );
+        for t in &ts {
+            assert!(t.description.is_some(), "{} 缺描述", t.name);
+            assert!(!t.input_schema.is_empty(), "{} 缺参数 schema", t.name);
+        }
     }
 }
