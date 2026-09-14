@@ -54,6 +54,17 @@ pnpm dev:desktop
 pnpm dev:mobile
 ```
 
+## AI 操作待办（MCP）
+
+桌面端内置 MCP 服务器（默认关闭），让 Claude Code / Claude Desktop / opencode / codex 等 AI 直接读写待办。
+
+启用：设置 →「MCP 服务器」→ 打开开关 → 复制对应 agent 的配置模板并执行一次（Claude Code 为 `claude mcp add` 命令）。
+
+- 地址：`http://127.0.0.1:18765/mcp`（仅本机，Bearer token 认证）
+- 工具：`list_tasks` / `create_task` / `update_task` / `complete_task` / `uncomplete_task` / `delete_task`
+- AI 的写操作实时刷新桌面 UI，并进入现有同步链路（在线时自动同步到 PocketBase，手机端同步可见）
+- 安全：开关默认关；token 在设置面板可重置；端口仅监听 127.0.0.1
+
 ## 文档
 
 - [需求文档 v1.0](docs/requirements.md)
