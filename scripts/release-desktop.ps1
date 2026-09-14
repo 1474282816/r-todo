@@ -68,22 +68,24 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
 if ($Version -ne $currentVersion) {
     Write-Host "[INFO] Bumping: $currentVersion -> $Version" -ForegroundColor Yellow
 
-    $conf = Read-Utf8 $confPath | ConvertFrom-Json
-    $conf.version = $Version
-    $conf | ConvertTo-Json -Depth 10 | Write-Utf8 $confPath
-
-    $pkg = Read-Utf8 $pkgPath | ConvertFrom-Json
-    $pkg.version = $Version
-    $pkg | ConvertTo-Json -Depth 10 | Write-Utf8 $pkgPath
+    # 精确替换顶层 version 字段，不用 ConvertTo-Json 重写整个 JSON——
+    # PS 5.1 下 ConvertTo-Json | Write-Utf8 会把文件写成 0 字节（2026-09-14 事故）
+    foreach ($path in @($confPath, $pkgPath)) {
+        $content = Read-Utf8 $path
+        $content = $content -replace '"version"\s*:\s*"[^"]*"', '"version": "$Version"'
+        Write-Utf8 $path $content
+    }
 
     $cargoContent = Read-Utf8 $cargoPath
     # Only replace version in [package] section (first occurrence, single line)
     $cargoContent = $cargoContent -replace '(\[package\][^\[]*?version = )"[^"]*"', "`$1`"$Version`""
     Write-Utf8 $cargoPath $cargoContent
 
-    git add $confPath $pkgPath $cargoPath
+    git add $confPath $pkgPath $cargoPath "apps/desktop/src-tauri/Cargo.lock"
     git commit -m "chore: bump version to $Version"
-    git push 2>&1 | Out-Null
+    # PS 5.1 下 2>&1 会把 native 的 stderr（gitee banner）包装成 NativeCommandError
+    # 并终止脚本——用 2>$null 只丢 stderr，退出码仍经 $LASTEXITCODE 检查
+    git push 2>$null
     if ($LASTEXITCODE -ne 0) { Write-Host "[ERR] push failed" -ForegroundColor Red; exit 1 }
     Write-Host "[OK] Version bumped and pushed" -ForegroundColor Green
 }
@@ -258,8 +260,8 @@ if (-not $SkipRelease) {
 $manifestPath = "apps/desktop/latest.json"
 if (Test-Path $manifestPath) {
     git add $manifestPath
-    git commit -m "chore: update manifest to v$Version" 2>&1 | Out-Null
-    git push 2>&1 | Out-Null
+    git commit -m "chore: update manifest to v$Version" 2>$null
+    git push 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[WARN] manifest push failed" -ForegroundColor Yellow
     } else {
