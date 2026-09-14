@@ -1,4 +1,4 @@
-# r-todo Desktop Release Script
+﻿# r-todo Desktop Release Script
 # Usage: ./scripts/release-desktop.ps1 [-Version <string>] [-SkipBuild] [-SkipTag] [-SkipRelease]
 #
 # Configure Gitee Token (one-time):
