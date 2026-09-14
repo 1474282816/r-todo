@@ -69,15 +69,41 @@ impl ServerHandler for McpHandler {
             let outcome: Result<CallToolResult, McpError> = match name.as_str() {
                 "list_tasks" => {
                     let input: ListTasksInput = parse_json_object(args)?;
-                    let conn = this.db().map_err(infra)?;
-                    let list = crate::mcp_tools::list_tasks(
-                        &conn,
-                        input.filter.as_deref().unwrap_or("active"),
-                        input.keyword.as_deref(),
-                        input.priority.as_deref(),
-                    )
-                    .map_err(infra)?;
-                    Ok(CallToolResult::structured(serde_json::to_value(list).expect("json")))
+                    // spec §6：filter/priority 枚举，非法参数 → 工具级 structured_error（AI 可见）。
+                    // 必须在 handler 层校验：数据层 Err 会被 map_err(infra) 转成协议级 internal_error，
+                    // AI 看不到具体原因——正是要避免的路径。
+                    let filter = input.filter.as_deref().unwrap_or("active");
+                    if !matches!(filter, "active" | "completed" | "all") {
+                        Ok(CallToolResult::structured_error(serde_json::json!({
+                            "error": format!("filter 非法: {filter}（可选 active/completed/all）")
+                        })))
+                    } else if let Some(p) = input.priority.as_deref() {
+                        if !matches!(p, "high" | "medium" | "low") {
+                            Ok(CallToolResult::structured_error(serde_json::json!({
+                                "error": format!("priority 非法: {p}（可选 high/medium/low）")
+                            })))
+                        } else {
+                            let conn = this.db().map_err(infra)?;
+                            let list = crate::mcp_tools::list_tasks(
+                                &conn,
+                                filter,
+                                input.keyword.as_deref(),
+                                Some(p),
+                            )
+                            .map_err(infra)?;
+                            Ok(CallToolResult::structured(serde_json::to_value(list).expect("json")))
+                        }
+                    } else {
+                        let conn = this.db().map_err(infra)?;
+                        let list = crate::mcp_tools::list_tasks(
+                            &conn,
+                            filter,
+                            input.keyword.as_deref(),
+                            None,
+                        )
+                        .map_err(infra)?;
+                        Ok(CallToolResult::structured(serde_json::to_value(list).expect("json")))
+                    }
                 }
                 "create_task" => {
                     let input: CreateTaskInput = parse_json_object(args)?;
@@ -655,5 +681,34 @@ mod tests {
             assert!(t.description.is_some(), "{} 缺描述", t.name);
             assert!(!t.input_schema.is_empty(), "{} 缺参数 schema", t.name);
         }
+    }
+
+    #[test]
+    fn nullable_opt_three_state_boundaries() {
+        // 三态语义：absent=外层 None（数据层=不变）、null=Some(None)（=清除）、有值=Some(Some(s))（=设置）。
+        // 这正是 nullable_opt 存在的理由——默认 Option<Option<String>> 反序列化会把 null 塌缩成外层 None。
+        let absent: UpdateTaskInput = serde_json::from_str(r#"{"id":"x"}"#).expect("absent");
+        assert_eq!(absent.remind_at, None);
+        assert_eq!(absent.repeat_rule, None);
+
+        let null: UpdateTaskInput =
+            serde_json::from_str(r#"{"id":"x","remind_at":null}"#).expect("null");
+        assert_eq!(null.remind_at, Some(None));
+
+        let value: UpdateTaskInput = serde_json::from_str(
+            r#"{"id":"x","remind_at":"2099-01-01T00:00:00.000Z"}"#,
+        )
+        .expect("value");
+        assert_eq!(value.remind_at, Some(Some("2099-01-01T00:00:00.000Z".to_string())));
+
+        // repeat_rule 同款三态
+        let rep_null: UpdateTaskInput =
+            serde_json::from_str(r#"{"id":"x","repeat_rule":null}"#).expect("rep_null");
+        assert_eq!(rep_null.repeat_rule, Some(None));
+        let rep_value: UpdateTaskInput = serde_json::from_str(
+            r#"{"id":"x","repeat_rule":"FREQ=DAILY"}"#,
+        )
+        .expect("rep_value");
+        assert_eq!(rep_value.repeat_rule, Some(Some("FREQ=DAILY".to_string())));
     }
 }
