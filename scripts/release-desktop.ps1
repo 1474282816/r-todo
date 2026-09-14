@@ -142,7 +142,10 @@ if (-not $SkipBuild) {
         }
 
         $manifestPath = "apps/desktop/latest.json"
-        $manifest | ConvertTo-Json -Depth 10 | Write-Utf8 $manifestPath
+        # 先存变量再显式传参：ConvertTo-Json 输出的多行字符串经管道逐行绑定
+        # 到 Write-Utf8 的 $Content，会把文件写成空（2026-09-14 事故）
+        $manifestJson = $manifest | ConvertTo-Json -Depth 10
+        Write-Utf8 $manifestPath ([string]$manifestJson)
         Write-Host "[OK] Update manifest: $manifestPath" -ForegroundColor Green
     } else {
         Write-Host "[WARN] Setup exe not found" -ForegroundColor Yellow
