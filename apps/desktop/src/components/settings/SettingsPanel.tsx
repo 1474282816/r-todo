@@ -38,6 +38,16 @@ import {
   type UpdateStatus,
 } from "../../lib/updater";
 import { cn } from "../../lib/cn";
+import {
+  MCP_URL,
+  copyText,
+  getMcpRunning,
+  getMcpStatus,
+  getMcpTemplates,
+  rotateMcpToken,
+  setMcpEnabled,
+  type McpTemplates,
+} from "../../lib/mcp";
 
 interface Props {
   open: boolean;
@@ -57,6 +67,15 @@ export function SettingsPanel({ open, onClose }: Props) {
   const [toast, setToast] = useState<string | null>(null);
   const [importPlan, setImportPlan] = useState<MergePlan | null>(null);
   const [importSource, setImportSource] = useState<string | null>(null);
+
+  // MCP 状态
+  const [mcpEnabled, setMcpEnabledState] = useState(false);
+  const [mcpToken, setMcpToken] = useState("");
+  const [mcpTemplates, setMcpTemplates] = useState<McpTemplates | null>(null);
+  const [mcpError, setMcpError] = useState<string | null>(null);
+  const [mcpBusy, setMcpBusy] = useState(false);
+  const [mcpRunning, setMcpRunning] = useState(false);
+  const [activeTemplate, setActiveTemplate] = useState<keyof McpTemplates>("claude_code");
 
   // 同步状态
   const [sync, setSync] = useState<SyncStatus>(getSyncStatus());
@@ -81,6 +100,20 @@ export function SettingsPanel({ open, onClose }: Props) {
   useEffect(() => {
     if (open) {
       isAutostartEnabled().then(setAutostartState);
+    }
+  }, [open]);
+
+  // 打开设置面板时读取 MCP 配置与运行态
+  useEffect(() => {
+    if (open) {
+      getMcpStatus().then((s) => {
+        setMcpEnabledState(s.enabled);
+        setMcpToken(s.token);
+      });
+      getMcpRunning().then((r) => {
+        setMcpRunning(r.running);
+        setMcpError(r.error);
+      });
     }
   }, [open]);
 
@@ -116,6 +149,45 @@ export function SettingsPanel({ open, onClose }: Props) {
       setError(String(e));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const toggleMcp = async () => {
+    setMcpBusy(true);
+    setMcpError(null);
+    try {
+      const s = await setMcpEnabled(!mcpEnabled);
+      setMcpEnabledState(s.enabled);
+      setMcpToken(s.token);
+      if (s.enabled) {
+        setMcpTemplates(await getMcpTemplates());
+        // 开启后刷新运行态：启动失败（如端口占用）会落在 r.error 里
+        const r = await getMcpRunning();
+        setMcpRunning(r.running);
+        setMcpError(r.error);
+      } else {
+        setMcpTemplates(null);
+        setMcpRunning(false);
+      }
+    } catch (e) {
+      setMcpError(String(e));
+    } finally {
+      setMcpBusy(false);
+    }
+  };
+
+  const doRotateToken = async () => {
+    setMcpBusy(true);
+    setMcpError(null);
+    try {
+      const s = await rotateMcpToken();
+      setMcpToken(s.token);
+      setMcpTemplates(await getMcpTemplates());
+      setToast("token 已重置，请在已配置的 agent 处同步更新");
+    } catch (e) {
+      setMcpError(String(e));
+    } finally {
+      setMcpBusy(false);
     }
   };
 
@@ -218,6 +290,116 @@ export function SettingsPanel({ open, onClose }: Props) {
               }}
               disabled={busy}
             />
+
+            <Row
+              label="MCP 服务器"
+              desc="允许 AI（Claude、opencode、codex 等）读取和修改待办"
+              checked={mcpEnabled}
+              onToggle={toggleMcp}
+              disabled={busy || mcpBusy}
+            />
+
+            {/* MCP 详情（开启后展开） */}
+            {mcpEnabled && (
+              <div className="rounded-lg bg-black/5 px-3 py-2.5 dark:bg-white/5">
+                <div className="text-[11px] text-neutral-700 dark:text-neutral-200">
+                  地址 <span className="font-mono text-[10px]">{MCP_URL}</span>
+                </div>
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <span className="font-mono text-[10px] text-neutral-500">
+                    {mcpToken ? `${mcpToken.slice(0, 8)}****…${mcpToken.slice(-4)}` : "…"}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      if (await copyText(mcpToken)) setToast("token 已复制");
+                      else setMcpError("复制失败，请手动复制");
+                    }}
+                    className="rounded bg-black/5 px-2 py-0.5 text-[10px] hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
+                  >
+                    复制 token
+                  </button>
+                  <button
+                    onClick={doRotateToken}
+                    disabled={mcpBusy}
+                    className="rounded bg-black/5 px-2 py-0.5 text-[10px] hover:bg-black/10 disabled:opacity-50 dark:bg-white/5 dark:hover:bg-white/10"
+                  >
+                    重置 token
+                  </button>
+                </div>
+                {/* 运行状态 */}
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      mcpRunning ? "bg-emerald-500" : "bg-neutral-400 dark:bg-neutral-500",
+                    )}
+                  />
+                  <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                    {mcpRunning ? "运行中" : "未运行"}
+                  </span>
+                </div>
+                <div className="mt-2.5 text-[10px] font-medium uppercase tracking-wide text-neutral-400">
+                  配置模板
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {(["claude_code", "claude_desktop", "opencode", "codex"] as const).map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => setActiveTemplate(k)}
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-[10px] transition-colors",
+                        activeTemplate === k
+                          ? "bg-neutral-800 text-white dark:bg-white dark:text-neutral-900"
+                          : "text-neutral-500 hover:bg-black/5 dark:hover:bg-white/5",
+                      )}
+                    >
+                      {k === "claude_code" ? "Claude Code" : k === "claude_desktop" ? "Claude Desktop" : k}
+                    </button>
+                  ))}
+                </div>
+                {mcpTemplates && (
+                  <div className="mt-1.5 space-y-1.5">
+                    <pre className="max-h-28 overflow-auto whitespace-pre-wrap rounded bg-white/60 p-2 font-mono text-[9px] text-neutral-600 dark:bg-black/30 dark:text-neutral-300">
+                      {mcpTemplates[activeTemplate]}
+                    </pre>
+                    <button
+                      onClick={async () => {
+                        if (mcpTemplates && (await copyText(mcpTemplates[activeTemplate]))) {
+                          setToast("模板已复制");
+                        } else {
+                          setMcpError("复制失败，请手动复制");
+                        }
+                      }}
+                      className="rounded bg-black/5 px-2 py-0.5 text-[10px] hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
+                    >
+                      复制模板
+                    </button>
+                  </div>
+                )}
+                {/* 启动失败错误 + 重试 */}
+                {mcpError && (
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <span className="text-[10px] text-red-500">{mcpError}</span>
+                    <button
+                      onClick={() => {
+                        setMcpError(null);
+                        // 重开开关触发重新 start（端口占用等临时故障可恢复）
+                        setMcpEnabled(true)
+                          .then(() => getMcpRunning())
+                          .then((r) => {
+                            setMcpRunning(r.running);
+                            setMcpError(r.error);
+                          })
+                          .catch((e) => setMcpError(String(e)));
+                      }}
+                      className="rounded bg-black/5 px-2 py-0.5 text-[10px] text-neutral-600 hover:bg-black/10 dark:bg-white/5 dark:text-neutral-300 dark:hover:bg-white/10"
+                    >
+                      重试
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 默认提前提醒 */}
             <div className="rounded-lg px-3 py-2.5">
