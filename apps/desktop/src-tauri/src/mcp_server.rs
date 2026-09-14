@@ -155,6 +155,8 @@ impl McpState {
     }
 
     fn stop(&self) {
+        // 用户主动停止：清掉历史报错，避免 get_mcp_running 对已停止的 server 返回过期错误
+        *self.error_slot.write().expect("error") = None;
         // MutexGuard 临时值先绑定到局部变量（tail/if-let 里直接取会撞上 State guard 的 Drop 顺序）
         let handle = self.handle.lock().expect("handle").take();
         if let Some(cancel) = self.cancel.lock().expect("cancel").take() {
@@ -231,10 +233,8 @@ pub fn set_mcp_enabled(app: tauri::AppHandle, enabled: bool) -> Result<crate::mc
     if enabled && cfg.token.is_empty() {
         cfg.token = crate::mcp_config::generate_token();
     }
-    // 交接约束：关掉开关即清空 token，get_mcp_client_templates 的"未启用"不变量立即可恢复
-    if !enabled {
-        cfg.token = String::new();
-    }
+    // spec §5.4：token 稳定不自动轮换 —— 关闭仅停止监听、不清 token，
+    // 重新开启复用同一 token，已配置 agent 无需重配
     crate::mcp_config::save_to(&crate::mcp_config::config_path(&app), &cfg)?;
     if enabled {
         start_mcp(&app)?;
@@ -247,10 +247,7 @@ pub fn set_mcp_enabled(app: tauri::AppHandle, enabled: bool) -> Result<crate::mc
 #[tauri::command]
 pub fn rotate_mcp_token(app: tauri::AppHandle) -> Result<crate::mcp_config::McpConfig, String> {
     let mut cfg = crate::mcp_config::load_from(&crate::mcp_config::config_path(&app));
-    // 关闭态轮换会写出 {enabled:false, token:"rtok_…"}，破坏 get_mcp_client_templates 的"未启用"不变量
-    if !cfg.enabled {
-        return Err("MCP 未启用，请先打开「MCP 服务器」开关".to_string());
-    }
+    // spec §7：重置 token 是泄露应对手段；关闭态（未监听）同样允许重置，重新开启后生效
     cfg.token = crate::mcp_config::generate_token();
     crate::mcp_config::save_to(&crate::mcp_config::config_path(&app), &cfg)?;
     set_mcp_token(&app, &cfg.token); // 运行中立即生效

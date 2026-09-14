@@ -78,8 +78,12 @@ pub fn get_mcp_status(app: tauri::AppHandle) -> McpConfig {
 #[tauri::command]
 pub fn get_mcp_client_templates(app: tauri::AppHandle) -> Result<McpTemplates, String> {
     let cfg = load_from(&config_path(&app));
-    if cfg.token.is_empty() {
+    // 不变量由 enabled 承担（token 在关闭时保留，不能以 token 是否为空判断"未启用"）
+    if !cfg.enabled {
         return Err("MCP 未启用，请先打开「MCP 服务器」开关".into());
+    }
+    if cfg.token.is_empty() {
+        return Err("MCP token 未初始化，请重新打开开关".into());
     }
     Ok(build_templates(&cfg.token))
 }
@@ -94,6 +98,7 @@ mod tests {
         let cfg = load_from(&path);
         assert!(!cfg.enabled);
         assert!(cfg.token.is_empty());
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
