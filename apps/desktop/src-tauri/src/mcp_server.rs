@@ -109,7 +109,8 @@ impl ServerHandler for McpHandler {
                     let input: CreateTaskInput = parse_json_object(args)?;
                     // spec §6：remind_at 需 ISO8601，非法参数 → 工具级 structured_error（AI 可见）。
                     // 若静默入库，前端 new Date(garbage) 产生 Invalid Date、提醒静默失效。
-                    let bad_remind = input.remind_at.as_deref().filter(|r| !valid_iso(r));
+                    // 空串视为「无提醒」（与 update 的清除语义对齐），不校验
+                    let bad_remind = input.remind_at.as_deref().filter(|r| !r.trim().is_empty() && !valid_iso(r));
                     if let Some(r) = bad_remind {
                         Ok(CallToolResult::structured_error(serde_json::json!({
                             "error": format!("remind_at 非法，需 ISO8601 格式: {r}")
