@@ -10,6 +10,7 @@ import * as db from "./db";
 import { rescheduleReminder, cancelReminder } from "./reminder";
 import { rollNext } from "./rrule";
 import { deleteRemote, onRemoteChange, pushTask } from "./sync";
+import { listen } from "@tauri-apps/api/event";
 import type { Task, TaskDraft } from "./types";
 
 interface TaskState {
@@ -27,6 +28,22 @@ interface TaskState {
   reorderActive: (orderedIds: string[]) => Promise<void>;
 }
 
+// hydrate 与 MCP/远端变更共用的重拉逻辑
+async function refreshFromDb(set: (fn: (s: TaskState) => void) => void) {
+  const list = await db.listTasks();
+  set((s) => {
+    s.tasks = list;
+  });
+  // 重新排队所有未完成的提醒
+  for (const t of list) {
+    if (!t.completed_at && t.remind_at) {
+      rescheduleReminder(t).catch(() => {
+        /* ignore */
+      });
+    }
+  }
+}
+
 export const useTaskStore = create<TaskState>()(
   immer((set, get) => ({
     tasks: [],
@@ -38,27 +55,18 @@ export const useTaskStore = create<TaskState>()(
       set((s) => {
         s.loading = true;
       });
-      const list = await db.listTasks();
+      await refreshFromDb(set);
       set((s) => {
-        s.tasks = list;
         s.loading = false;
         s.loaded = true;
       });
-      // 重新排队所有未完成的提醒
-      for (const t of list) {
-        if (!t.completed_at && t.remind_at) {
-          rescheduleReminder(t).catch(() => {
-            /* ignore */
-          });
-        }
-      }
 
       // 远端有变更时重拉本地
-      onRemoteChange(async () => {
-        const fresh = await db.listTasks();
-        set((s) => {
-          s.tasks = fresh;
-        });
+      onRemoteChange(() => refreshFromDb(set));
+
+      // MCP（AI 写入）后 Rust 侧通知重拉
+      listen("tasks-changed", () => refreshFromDb(set)).catch(() => {
+        /* 非 Tauri 环境忽略 */
       });
     },
 
