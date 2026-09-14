@@ -28,20 +28,36 @@ interface TaskState {
   reorderActive: (orderedIds: string[]) => Promise<void>;
 }
 
+// 已排提醒的任务 id（跨 refresh 保留，用于取消过期提醒：
+// AI 经 MCP 清提醒/完成/删除后，Rust 定时器需显式 cancel，否则仍会在原时刻弹通知）
+const scheduledReminderIds = new Set<string>();
+
 // hydrate 与 MCP/远端变更共用的重拉逻辑
 async function refreshFromDb(set: (fn: (s: TaskState) => void) => void) {
   const list = await db.listTasks();
   set((s) => {
     s.tasks = list;
   });
-  // 重新排队所有未完成的提醒
+  // 收集本次「未完成且带提醒」的任务，逐个重新排队
+  const current = new Set<string>();
   for (const t of list) {
     if (!t.completed_at && t.remind_at) {
+      current.add(t.id);
       rescheduleReminder(t).catch(() => {
         /* ignore */
       });
     }
   }
+  // 取消已过期提醒（不再满足条件的历史排程）
+  for (const id of scheduledReminderIds) {
+    if (!current.has(id)) {
+      cancelReminder(id).catch(() => {
+        /* ignore */
+      });
+    }
+  }
+  scheduledReminderIds.clear();
+  for (const id of current) scheduledReminderIds.add(id);
 }
 
 export const useTaskStore = create<TaskState>()(

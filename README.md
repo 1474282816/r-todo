@@ -64,6 +64,7 @@ pnpm dev:mobile
 - 工具：`list_tasks` / `create_task` / `update_task` / `complete_task` / `uncomplete_task` / `delete_task`
 - AI 的写操作实时刷新桌面 UI，并进入现有同步链路（在线时自动同步到 PocketBase，手机端同步可见）
 - 安全：开关默认关；token 在设置面板可重置；端口仅监听 127.0.0.1
+- opencode / codex 的配置模板已按官方格式内置，但未经真机验证（本机未安装）；如报 schema 错误，请按官方文档格式手动调整后反馈
 
 ## 文档
 

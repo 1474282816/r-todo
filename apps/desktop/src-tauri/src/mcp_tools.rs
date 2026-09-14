@@ -322,6 +322,11 @@ pub fn set_completed(conn: &mut Connection, id: &str, completed: bool) -> Result
     if cur.deleted {
         return Err(format!("任务不存在: {id}"));
     }
+    // 幂等短路（spec §6：已完成则幂等返回）：状态已匹配则直接返回，
+    // 不写库、不入队 —— 避免重写 completed_at 滚动完成时间、多余云端流量（事务 drop 自动回滚）
+    if cur.completed_at.is_some() == completed {
+        return Ok(cur);
+    }
     let completed_at = if completed { Some(now.clone()) } else { None };
     tx.execute(
         "UPDATE tasks SET completed_at = ?1, updated_at = ?2 WHERE id = ?3 AND deleted = 0",
@@ -405,6 +410,27 @@ mod tests {
         assert_eq!(done_list.len(), 1);
         let undone = set_completed(&mut conn, &t.id, false).expect("undone");
         assert!(undone.completed_at.is_none());
+    }
+
+    #[test]
+    fn complete_twice_is_idempotent() {
+        // 回归：对已完成任务再次 complete 应幂等返回——不重写 completed_at、
+        // 不再入队 update pending_op（避免滚动完成时间与多余云端流量）。
+        let mut conn = test_conn("complete_twice_is_idempotent");
+        let t = create_task(&mut conn, "幂等完成", None, None, None, None).expect("t");
+        let done1 = set_completed(&mut conn, &t.id, true).expect("done1");
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pending_ops", [], |r| r.get(0))
+            .unwrap();
+        let done2 = set_completed(&mut conn, &t.id, true).expect("done2");
+        let n2: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pending_ops", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n2, n, "再次 complete 不应新增 pending_op");
+        assert_eq!(
+            done2.completed_at, done1.completed_at,
+            "completed_at 不应被滚动重写"
+        );
     }
 
     #[test]

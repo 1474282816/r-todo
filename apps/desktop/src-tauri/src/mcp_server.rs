@@ -107,41 +107,63 @@ impl ServerHandler for McpHandler {
                 }
                 "create_task" => {
                     let input: CreateTaskInput = parse_json_object(args)?;
-                    let mut conn = this.db().map_err(infra)?;
-                    match crate::mcp_tools::create_task(
-                        &mut conn,
-                        &input.title,
-                        input.priority.as_deref(),
-                        input.remind_at.as_deref(),
-                        input.remind_offset_min,
-                        input.repeat_rule.as_deref(),
-                    ) {
-                        Ok(t) => {
-                            this.notify_changed();
-                            Ok(CallToolResult::structured(serde_json::to_value(t).expect("json")))
+                    // spec §6：remind_at 需 ISO8601，非法参数 → 工具级 structured_error（AI 可见）。
+                    // 若静默入库，前端 new Date(garbage) 产生 Invalid Date、提醒静默失效。
+                    let bad_remind = input.remind_at.as_deref().filter(|r| !valid_iso(r));
+                    if let Some(r) = bad_remind {
+                        Ok(CallToolResult::structured_error(serde_json::json!({
+                            "error": format!("remind_at 非法，需 ISO8601 格式: {r}")
+                        })))
+                    } else {
+                        let mut conn = this.db().map_err(infra)?;
+                        match crate::mcp_tools::create_task(
+                            &mut conn,
+                            &input.title,
+                            input.priority.as_deref(),
+                            input.remind_at.as_deref(),
+                            input.remind_offset_min,
+                            input.repeat_rule.as_deref(),
+                        ) {
+                            Ok(t) => {
+                                this.notify_changed();
+                                Ok(CallToolResult::structured(serde_json::to_value(t).expect("json")))
+                            }
+                            Err(msg) => Ok(CallToolResult::structured_error(serde_json::json!({ "error": msg }))),
                         }
-                        Err(msg) => Ok(CallToolResult::structured_error(serde_json::json!({ "error": msg }))),
                     }
                 }
                 "update_task" => {
                     let input: UpdateTaskInput = parse_json_object(args)?;
-                    let mut conn = this.db().map_err(infra)?;
-                    // 三态：absent=不变(null→清除、有值→设置)，空串在数据层视为清除
-                    let remind_at = input.remind_at.as_ref().map(|v| v.as_deref());
-                    let repeat_rule = input.repeat_rule.as_ref().map(|v| v.as_deref());
-                    match crate::mcp_tools::update_task(
-                        &mut conn,
-                        &input.id,
-                        input.title.as_deref(),
-                        input.priority.as_deref(),
-                        remind_at,
-                        repeat_rule,
-                    ) {
-                        Ok(t) => {
-                            this.notify_changed();
-                            Ok(CallToolResult::structured(serde_json::to_value(t).expect("json")))
+                    // spec §6：remind_at 需 ISO8601。仅「设置值」时校验——
+                    // null=清除、缺省=不变、空串=清除 都不校验（数据层会把空串视为清除）。
+                    let bad_remind = input
+                        .remind_at
+                        .as_ref()
+                        .and_then(|v| v.as_ref())
+                        .filter(|s| !s.trim().is_empty() && !valid_iso(s));
+                    if let Some(r) = bad_remind {
+                        Ok(CallToolResult::structured_error(serde_json::json!({
+                            "error": format!("remind_at 非法，需 ISO8601 格式: {r}")
+                        })))
+                    } else {
+                        let mut conn = this.db().map_err(infra)?;
+                        // 三态：absent=不变(null→清除、有值→设置)，空串在数据层视为清除
+                        let remind_at = input.remind_at.as_ref().map(|v| v.as_deref());
+                        let repeat_rule = input.repeat_rule.as_ref().map(|v| v.as_deref());
+                        match crate::mcp_tools::update_task(
+                            &mut conn,
+                            &input.id,
+                            input.title.as_deref(),
+                            input.priority.as_deref(),
+                            remind_at,
+                            repeat_rule,
+                        ) {
+                            Ok(t) => {
+                                this.notify_changed();
+                                Ok(CallToolResult::structured(serde_json::to_value(t).expect("json")))
+                            }
+                            Err(msg) => Ok(CallToolResult::structured_error(serde_json::json!({ "error": msg }))),
                         }
-                        Err(msg) => Ok(CallToolResult::structured_error(serde_json::json!({ "error": msg }))),
                     }
                 }
                 "complete_task" | "uncomplete_task" => {
@@ -398,6 +420,11 @@ pub fn rotate_mcp_token(app: tauri::AppHandle) -> Result<crate::mcp_config::McpC
 /// 基础设施错误（db 打开/查询失败）→ 协议级错误
 fn infra(e: String) -> McpError {
     McpError::new(ErrorCode::INTERNAL_ERROR, e, None)
+}
+
+/// remind_at ISO8601 校验（spec §6：非法参数 → InvalidArgument，工具级 structured_error）
+fn valid_iso(s: &str) -> bool {
+    chrono::DateTime::parse_from_rfc3339(s).is_ok()
 }
 
 // ── 工具输入结构（schemars 自动生成 JSON Schema） ──
@@ -706,6 +733,40 @@ mod tests {
         let sc = &json["result"]["structuredContent"];
         assert!(sc.is_object(), "structuredContent 必须是对象: {json}");
         assert!(sc["tasks"].is_array(), "tasks 应为数组: {json}");
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn tools_call_create_task_rejects_bad_remind_at() {
+        // 回归：remind_at 非法（非 ISO8601）应返回工具级错误（isError=true、structuredContent.error 含 ISO），
+        // 而非静默入库导致前端 new Date(garbage) 产生 Invalid Date、提醒静默失效。
+        let handle = start_test_server(18773, "secret").await;
+        let (status, _) = initialize(18773, Some("secret")).await;
+        assert_eq!(status, 200);
+
+        let body = serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": { "name": "create_task", "arguments": { "title": "x", "remind_at": "明天下午3点" } }
+        });
+        let client = reqwest::Client::new();
+        let resp = client
+            .post("http://127.0.0.1:18773/mcp")
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json, text/event-stream")
+            .header(AUTHORIZATION, "Bearer secret")
+            .json(&body)
+            .send()
+            .await
+            .expect("http");
+        let status = resp.status().as_u16();
+        let json: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+        assert_eq!(status, 200, "tools/call 应成功: {json}");
+        let result = &json["result"];
+        assert_eq!(result["isError"], true, "非法 remind_at 应标记 isError: {json}");
+        let err = result["structuredContent"]["error"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(err.contains("ISO"), "错误信息应含 ISO: {json}");
         handle.abort();
     }
 
