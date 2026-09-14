@@ -1,5 +1,25 @@
 # 改动日志
 
+## 2026-09-14 · MCP 服务器（AI 操作待办）
+
+### 背景
+
+应用安装后即可通过 AI（Claude Code / Claude Desktop / opencode / codex 等）直接读写待办。桌面端内置 MCP server（默认关闭、可开关），`settings` 面板可配置 token 与各 agent 的配置模板。
+
+### 改动
+
+- `apps/desktop/src-tauri/src/mcp_server.rs`（新）：rmcp streamable HTTP server（`127.0.0.1:18765/mcp`）+ Bearer 恒时认证 + 启停生命周期 + 运行态/错误上报。
+- `apps/desktop/src-tauri/src/mcp_config.rs`（新）：开关/token（`rtok_` 前缀、稳定不自动轮换）/agent 模板（Claude Code/Desktop/opencode/codex）。
+- `apps/desktop/src-tauri/src/mcp_tools.rs`（新）：rusqlite 数据层 + 6 个工具（list/create/update/complete/uncomplete/delete），SQL 语义与前端 `db.ts` 逐条对齐；写操作同事务写 `pending_ops`（PocketBase 字段名、不含 user，flush 时注入）。
+- 前端：`refreshFromDb` 抽取（store.ts）+ 订阅 `tasks-changed` 事件实时刷新；设置面板 MCP 区块（开关/地址/token 掩码复制/模板切换复制/重置/运行态/错误重试）。
+- `db.ts` 修复 `enqueueOp` 参数错位 bug（op_type 拿到 `"tasks"`，离线队列写不进去）。
+- README 增「AI 操作待办（MCP）」节。
+
+### 已知限制
+
+- opencode / codex 模板按官方格式内置但未真机验证（本机未装）；报 schema 错误请按官方文档调整。
+- 云同步路径（登录态）未端到端实测，逻辑由既有 flush 队列覆盖。
+
 ## 2026-08-07 · 桌面嵌入重做：WorkerW 挂载（Win+D 不收起）
 
 ### 背景
