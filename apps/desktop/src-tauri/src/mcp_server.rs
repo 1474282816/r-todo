@@ -91,7 +91,7 @@ impl ServerHandler for McpHandler {
                                 Some(p),
                             )
                             .map_err(infra)?;
-                            Ok(CallToolResult::structured(serde_json::to_value(list).expect("json")))
+                            Ok(CallToolResult::structured(serde_json::json!({ "tasks": list })))
                         }
                     } else {
                         let conn = this.db().map_err(infra)?;
@@ -102,7 +102,7 @@ impl ServerHandler for McpHandler {
                             None,
                         )
                         .map_err(infra)?;
-                        Ok(CallToolResult::structured(serde_json::to_value(list).expect("json")))
+                        Ok(CallToolResult::structured(serde_json::json!({ "tasks": list })))
                     }
                 }
                 "create_task" => {
@@ -556,8 +556,16 @@ mod tests {
 
     async fn start_test_server(port: u16, token: &str) -> tokio::task::JoinHandle<Result<(), String>> {
         let slot = Arc::new(RwLock::new(token.to_string()));
-        let db = std::env::temp_dir().join(format!("rtodo_mcp_test_{}.db", std::process::id()));
+        // 端口维度隔离：多个测试并行 start_test_server，pid 相同但端口不同，
+        // 共用同一 db 文件会因并发 remove/open 冲突（Windows 文件锁）
+        let db = std::env::temp_dir().join(format!("rtodo_mcp_test_{}_{}.db", std::process::id(), port));
         let _ = std::fs::remove_file(&db);
+        // 真实 db 由应用 migration 建表；测试 db 需手动 init，
+        // 否则 tools/call 真正查 tasks 表时会报 "no such table: tasks"
+        {
+            let conn = crate::mcp_tools::open_db(&db).expect("open test db");
+            crate::mcp_tools::init_schema(&conn).expect("init test schema");
+        }
         let cancel = CancellationToken::new();
         let handle = tokio::spawn(serve_mcp(db, slot, noop(), port, cancel));
         wait_port(port).await;
@@ -667,6 +675,38 @@ mod tests {
         let err = state.error_slot.read().expect("error").clone().expect("error recorded");
         assert!(err.contains("18771"), "错误信息应含端口: {err}");
         blocker.abort();
+    }
+
+    #[tokio::test]
+    async fn tools_call_list_tasks_returns_object() {
+        // 回归：list_tasks 返回裸数组时 structuredContent 是数组，违反 MCP 协议
+        // （structuredContent 必须为 object），Claude Code 会以 schema 校验失败拒绝。
+        // 必须包成 { "tasks": [...] } 对象。
+        let handle = start_test_server(18772, "secret").await;
+        let (status, _) = initialize(18772, Some("secret")).await;
+        assert_eq!(status, 200);
+
+        let body = serde_json::json!({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": { "name": "list_tasks", "arguments": {} }
+        });
+        let client = reqwest::Client::new();
+        let resp = client
+            .post("http://127.0.0.1:18772/mcp")
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json, text/event-stream")
+            .header(AUTHORIZATION, "Bearer secret")
+            .json(&body)
+            .send()
+            .await
+            .expect("http");
+        let status = resp.status().as_u16();
+        let json: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+        assert_eq!(status, 200, "tools/call 应成功: {json}");
+        let sc = &json["result"]["structuredContent"];
+        assert!(sc.is_object(), "structuredContent 必须是对象: {json}");
+        assert!(sc["tasks"].is_array(), "tasks 应为数组: {json}");
+        handle.abort();
     }
 
     #[test]
