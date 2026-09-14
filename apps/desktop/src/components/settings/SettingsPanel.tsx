@@ -252,7 +252,7 @@ export function SettingsPanel({ open, onClose }: Props) {
             exit={{ y: 40, opacity: 0 }}
             transition={{ type: "spring", stiffness: 320, damping: 30 }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full rounded-t-2xl bg-white/95 p-4 shadow-2xl dark:bg-neutral-900/95"
+            className="max-h-[85vh] w-full overflow-y-auto rounded-t-2xl bg-white/95 p-4 shadow-2xl dark:bg-neutral-900/95"
           >
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-neutral-700 dark:text-neutral-200">
