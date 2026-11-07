@@ -7,11 +7,17 @@ import { formatDateTime } from "../../lib/datetime";
 import type { MergePlan } from "../../lib/io/import";
 import { useTaskStore } from "../../lib/store";
 import {
+  BACKDROP_OPTIONS,
   embedToDesktop,
+  getBackdropPreference,
+  getWindowOpacity,
   isAutostartEnabled,
   isEmbeddedPreference,
   setAutostart,
+  setWindowBackdrop,
+  setWindowOpacity,
   unembedFromDesktop,
+  type Backdrop,
 } from "../../lib/system";
 import {
   isCollapseOnSnapEnabled,
@@ -59,6 +65,8 @@ export function SettingsPanel({ open, onClose }: Props) {
   const bulkImport = useTaskStore((s) => s.bulkImport);
 
   const [embedded, setEmbedded] = useState(isEmbeddedPreference());
+  const [backdrop, setBackdropState] = useState<Backdrop>(getBackdropPreference());
+  const [opacity, setOpacityState] = useState<number>(getWindowOpacity());
   const [autostart, setAutostartState] = useState(false);
   const [collapse, setCollapseState] = useState(isCollapseOnSnapEnabled());
   const [defaultOffset, setDefaultOffsetState] = useState(getDefaultOffset());
@@ -273,6 +281,60 @@ export function SettingsPanel({ open, onClose }: Props) {
               onToggle={toggleEmbed}
               disabled={busy}
             />
+
+            {/* Win11 窗口材质：半透明（默认）/ 实时模糊 */}
+            <div className="mt-2 rounded-lg bg-black/5 px-3 py-2.5 dark:bg-white/5">
+              <div className="text-[12px] font-medium text-neutral-700 dark:text-neutral-200">
+                窗口材质
+              </div>
+              <div className="mt-0.5 text-[11px] text-neutral-500">
+                默认半透明；实时模糊三档换壁纸自动跟随，读取不到壁纸会自动降级为半透明
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-1.5">
+                {BACKDROP_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    onClick={() => {
+                      setBackdropState(o.value);
+                      setWindowBackdrop(o.value).catch((e) => setError(String(e)));
+                    }}
+                    className={cn(
+                      "rounded-md px-2 py-1 text-[11px] transition",
+                      backdrop === o.value
+                        ? "bg-neutral-800 text-white dark:bg-white dark:text-neutral-900"
+                        : "bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15",
+                    )}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-1.5 text-[10px] text-neutral-400">
+                {BACKDROP_OPTIONS.find((o) => o.value === backdrop)?.desc}
+              </div>
+
+              {/* 不透明度：所有材质共用，半透明档全权生效 */}
+              <div className="mt-2.5 flex items-center gap-2">
+                <span className="w-12 shrink-0 text-[10px] text-neutral-500">不透明度</span>
+                <input
+                  type="range"
+                  min={20}
+                  max={100}
+                  step={1}
+                  value={Math.round(opacity * 100)}
+                  onChange={(e) => {
+                    const v = Number(e.target.value) / 100;
+                    setOpacityState(v);
+                    setWindowOpacity(v);
+                  }}
+                  className="h-1 flex-1 cursor-pointer appearance-none rounded-full bg-black/10 accent-neutral-700 dark:bg-white/15 dark:accent-white"
+                />
+                <span className="w-8 shrink-0 text-right font-mono text-[10px] text-neutral-500">
+                  {Math.round(opacity * 100)}%
+                </span>
+              </div>
+            </div>
+
             <Row
               label="开机自启"
               desc="登录后自动打开"

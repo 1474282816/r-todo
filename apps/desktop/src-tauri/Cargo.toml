@@ -1,6 +1,6 @@
 [package]
 name = "r-todo-desktop"
-version = "0.0.5"
+version = "0.0.9"
 description = "r-todo Windows 桌面端"
 authors = ["you"]
 edition = "2021"
@@ -50,6 +50,10 @@ log = "0.4"
 # MCP 配置 token 生成
 rand = "0.10"
 
+# 挂件材质：读壁纸 → 缩放高斯模糊 → PNG → base64（模拟 Mica，换壁纸实时刷新）
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "webp"] }
+base64 = "0.22"
+
 # MCP server（streamable HTTP）
 # rusqlite 0.40 需要 libsqlite3-sys ^0.38，与 tauri-plugin-sql(sqlx) 的 libsqlite3-sys 0.28 冲突；
 # 降到 0.31（同用 libsqlite3-sys 0.28）以共存
@@ -60,11 +64,15 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 
 [target.'cfg(windows)'.dependencies]
 # WorkerW 挂载所需 Win32 API
+# Win32_UI_Shell + Win32_System_Com：任务栏按钮（ITaskbarList::DeleteTab）
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_HiDpi",
     "Win32_UI_Controls",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Shell",
+    "Win32_System_Com",
     "Win32_Graphics_Dwm",
 ] }
 

@@ -22,7 +22,12 @@ import {
 import { sortTasks } from "./lib/sort";
 import { useTaskStore } from "./lib/store";
 import { restoreSession } from "./lib/sync";
-import { embedToDesktop, isEmbeddedPreference } from "./lib/system";
+import {
+  embedToDesktop,
+  isEmbeddedPreference,
+  restoreBackdrop,
+  watchWallpaperChanges,
+} from "./lib/system";
 import type { Task } from "./lib/types";
 import { silentCheckUpdate, subscribeUpdateStatus } from "./lib/updater";
 
@@ -72,6 +77,12 @@ export default function App() {
         console.warn("failed to auto-embed on startup:", e);
       });
     }
+  }, []);
+
+  // 启动时恢复窗口材质偏好（默认 acrylic 毛玻璃）+ 监听壁纸变化实时刷新
+  useEffect(() => {
+    restoreBackdrop().catch((e) => console.warn("restore backdrop failed:", e));
+    watchWallpaperChanges().catch(() => {});
   }, []);
 
   // 启动时恢复登录 + 后台同步

@@ -12,6 +12,12 @@ mod snap;
 #[cfg(target_os = "windows")]
 mod rounded;
 
+#[cfg(target_os = "windows")]
+mod wallpaper_mica;
+
+#[cfg(target_os = "windows")]
+mod window_effect;
+
 use tauri::Manager;
 use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
@@ -31,7 +37,18 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // 只恢复几何状态（位置/尺寸/最大化），**不恢复 visible**。
+        // 原因：托盘"隐藏窗口"后退出，window-state 会把 visible:false 落盘，
+        // 下次启动恢复成隐藏 → 用户双击图标"什么都没出现"（实测踩过）。
+        // 可见性由 setup 里的显式 show() 决定。
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        & !tauri_plugin_window_state::StateFlags::VISIBLE,
+                )
+                .build(),
+        )
         // SQLite + tasks 表 migration
         .plugin(
             tauri_plugin_sql::Builder::default()
@@ -56,15 +73,24 @@ pub fn run() {
                 .get_webview_window("main")
                 .expect("main window missing");
 
-            // 不用 Acrylic/Mica —— Win10 上 DWM 卡顿代价太大（见 backlog OPT-001）。
-            // 改为纯 CSS 半透明背景，跨版本一致、拖动丝滑。
-            //
-            // Win11 圆角仅应用到主窗口（透明无边框）；月视图有系统边框，
-            // 强加 DWM 圆角会露出四个白色圆角尖。
+            // 材质（Mica/Acrylic/Mica Alt）由前端按用户偏好调用
+            // set_window_backdrop 设置（走 Win11 SystemBackdrop，见 window_effect.rs）。
+            // 此处只处理 Win11 圆角（仅主窗口；月视图有系统边框，强加圆角会露白尖）。
             #[cfg(target_os = "windows")]
             {
                 rounded::apply_rounded_corners(&window);
             }
+
+            // 启动必显：window-state 只恢复几何状态，可见性在这里强制打开，
+            // 避免"上次隐藏 → 这次启动看不见窗口"。
+            // 另外兜底：若上次位置落在屏幕外（拔过显示器/改过分辨率），拉回居中。
+            if let Ok(pos) = window.outer_position() {
+                if pos.x < -10_000 || pos.y < -10_000 {
+                    let _ = window.center();
+                }
+            }
+            let _ = window.show();
+            let _ = window.unminimize();
 
             // ── 系统托盘 ──
             let show_item = MenuItemBuilder::with_id("show", "显示主窗口").build(app)?;
@@ -127,6 +153,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             desktop_embed::embed_to_desktop,
             desktop_embed::unembed_from_desktop,
+            #[cfg(target_os = "windows")]
+            window_effect::set_window_backdrop,
+            #[cfg(target_os = "windows")]
+            wallpaper_mica::get_wallpaper_mica,
             notifier::schedule_reminder,
             notifier::cancel_reminder,
             snap::get_snap_target,
