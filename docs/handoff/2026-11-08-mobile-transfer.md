@@ -5,6 +5,7 @@
 > 目标平台：Android（iOS 明确不做）
 > 预计工作量：MVP 2~3 周，可日常使用 3~4 周
 > 配套文档：`docs/handoff/2026-11-08-desktop-transfer.md`
+> 共享 crate：`crates/transfer-core`（skeleton 已合入 master，契约测试通过）
 
 ---
 
@@ -60,7 +61,19 @@ apps/mobile/
   android/app/src/main/AndroidManifest.xml
 ```
 
-### 2.3 不要动的部分
+### 2.3 共享 core skeleton
+
+`crates/transfer-core` 已合入 master，包含：
+
+- `TransferConfig`、`DeviceInfo`、`DeviceChannel`、`DeviceSummary`
+- `TransferEvent` + `EventEnvelope`（`SCHEMA_VERSION = 1`）
+- `ErrorCode` / `ErrorScope` / `TransferError`
+- `TransferService` 骨架：`start` 只保存配置与事件通道，`send` / `respond_*` 返回 `NotImplemented`
+- 契约测试：`cargo test` 通过
+
+手机端可以先用它打通 FRB → Dart → Kotlin 链路；协议实现由 Desktop agent 完成。
+
+### 2.4 不要动的部分
 
 - `lib/sync/`、`lib/state/`、`lib/data/`
 - `android/.../widget/` 四个小组件
@@ -75,7 +88,7 @@ apps/mobile/
 
 1. **保留 Flutter UI**，不迁 Compose / Rust UI。
 2. **Rust 只做协议/传输核心**，Flutter 负责 UI，Kotlin 负责 Android 平台能力。
-3. 与桌面端共用 `packages/transfer-core`（桌面 handoff 会创建）：
+3. 与桌面端共用 `crates/transfer-core`（master 已提供 skeleton）：
    - 手写一个 FRB crate 通过 path 依赖它
    - 不复制一套协议实现
 4. **Android only**：
@@ -101,14 +114,14 @@ apps/mobile/
 ## 4. 目标架构
 
 ```text
-packages/transfer-core/                 # 桌面端创建，手机端 path 依赖
+crates/transfer-core/                 # master 已提供 skeleton，手机端 path 依赖
   Cargo.toml
   src/lib.rs
   src/event.rs
   ...
 
 apps/mobile/rust/                       # FRB crate（本任务新建）
-  Cargo.toml                            # 依赖 ../../../packages/transfer-core
+  Cargo.toml                            # 依赖 ../../../crates/transfer-core
   src/lib.rs
   src/api/transfer.rs
   flutter_rust_bridge.yaml
@@ -122,6 +135,13 @@ apps/mobile/android/app/src/main/kotlin/dev/rtodo/r_todo_mobile/transfer/
   TransferPlugin.kt                     # MethodChannel / EventChannel
   FileBridge.kt                         # SAF / 缓存 / MediaStore
   TransferForegroundService.kt          # 前台服务 + 通知
+```
+
+依赖写法：
+
+```toml
+# apps/mobile/rust/Cargo.toml
+rtodo-transfer-core = { path = "../../../crates/transfer-core" }
 ```
 
 ### 4.1 分层
@@ -222,7 +242,7 @@ CANCELLED | IO | UNKNOWN
 
 ### Phase 0 · Spike（1~2 天）
 
-- [ ] 在 `apps/mobile/rust/` 建 FRB crate，path 依赖 `packages/transfer-core`
+- [ ] 在 `apps/mobile/rust/` 建 FRB crate，path 依赖 `crates/transfer-core`
 - [ ] 配置 `flutter_rust_bridge_codegen`，生成 Dart 绑定
 - [ ] `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`
 - [ ] 配置 Android NDK / cargokit（或 FRB 推荐的构建方式）
@@ -344,7 +364,7 @@ flutter_rust_bridge_codegen generate
 
 ## 9. 风险
 
-1. **Rust Android 构建链**：NDK、`ring`/`rustls`、cargokit、target 安装、Windows 路径/长路径；先用最小工程验证。若 cargokit 对 `packages/transfer-core` 的 workspace 外 path 依赖不友好，允许 vendor 到 `apps/mobile/rust/vendor/`，但不要复制两套协议实现。
+1. **Rust Android 构建链**：NDK、`ring`/`rustls`、cargokit、target 安装、Windows 路径/长路径；先用最小工程验证。若 cargokit 对 `crates/transfer-core` 的 workspace 外 path 依赖不友好，允许 vendor 到 `apps/mobile/rust/vendor/`，但不要复制两套协议实现。
 2. **FRB 版本兼容**：Flutter 3.47.8 / Dart 3.13.7 与 FRB 版本要匹配；生成代码与运行时不匹配会崩。
 3. **SAF 双拷贝**：大文件多一次磁盘写入；需要进度/空间检查/清理。
 4. **前台服务与权限**：Android 13 通知权限、Android 14 FGS 类型、Android 16 本地网络限制；不同 OEM 行为不同。
@@ -375,10 +395,49 @@ flutter_rust_bridge_codegen generate
 ## 11. 协作约定
 
 - 分支：`feat/mobile-transfer`
-- 与桌面端共用 `packages/transfer-core`：
+- 与桌面端共用 `crates/transfer-core`：
   - 桌面 agent 先建；手机 agent 只 path 依赖，不复制协议代码
   - 事件/错误码变更必须同步桌面 handoff 的消费者
 - 不要提交：`build/`、`.dart_tool/`、Rust `target/`、cache 样本、密钥
 - 不要修改 `apps/desktop/src-tauri/tauri.conf.json` 的 updater / `latest.json` / `scripts/release-desktop.ps1`
 - 完成后在本文档追加“实现记录”：FRB/NDK/Rust 版本、构建命令、已知差异、未完成项
 - 需要用户决策的点（默认接收目录、自动接受、PIN 默认值）先记录，不要擅自改产品行为
+
+---
+
+## 12. 并行开发约定（桌面 + 手机）
+
+两端可以同时开发，前提是**共享 core 单归属**：
+
+| 范围 | Owner | 规则 |
+|---|---|---|
+| `crates/transfer-core` 内部实现 | Desktop agent | 只有 desktop agent 改 `service.rs` / 协议实现 |
+| `apps/mobile`、FRB、Kotlin | Mobile agent | 只消费 core API；需要新 API 先提给 desktop agent |
+| 事件/错误码/`SCHEMA_VERSION` | 双方 | 任何改动必须同步两端 + `tests/contract.rs` |
+
+工作区：
+
+```powershell
+# 由主仓库统一创建，两个 agent 各进自己的目录
+git worktree add .worktrees/desktop -b feat/desktop-transfer
+git worktree add .worktrees/mobile  -b feat/mobile-transfer
+```
+
+合并顺序：
+
+1. `crates/transfer-core` skeleton（已在 master）
+2. Desktop 的 core 实现 + Tauri
+3. Mobile rebase 后接真实 core（之前可用 skeleton/mock 开发 UI）
+
+硬性禁止：
+
+- 两个 agent 同时修改 `crates/transfer-core`
+- 各自复制一套协议实现
+- 单方面改事件字段/错误码
+
+契约测试：
+
+```powershell
+cd crates/transfer-core
+cargo test
+```

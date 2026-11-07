@@ -71,3 +71,6 @@ apps/desktop/src-tauri/.cargo/
 /r-todo_*.exe
 /r-todo_*.exe.sig
 
+# ────── 并行开发 worktree ──────
+/.worktrees/
+

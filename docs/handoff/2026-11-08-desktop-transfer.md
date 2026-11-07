@@ -5,6 +5,7 @@
 > 目标平台：Windows（Tauri 2）
 > 预计工作量：MVP 1.5~2 周，可日常使用 3~4 周
 > 配套文档：`docs/handoff/2026-11-08-mobile-transfer.md`
+> 共享 crate：`crates/transfer-core`（skeleton 已合入 master，契约测试通过）
 
 ---
 
@@ -54,7 +55,20 @@
 - 新增 `transfer` 独立窗口后，**必须把 `"transfer"` 加进该数组**
 - 自定义 Tauri command 不需要 ACL；但 dialog/fs/event 等插件 API 需要对应权限
 
-### 2.4 不要动的部分
+### 2.4 共享 core skeleton
+
+`crates/transfer-core` 已合入 master，包含：
+
+- `TransferConfig`（默认端口 53317）
+- `DeviceInfo` / `DeviceChannel` / `DeviceSummary`
+- `TransferEvent` + `EventEnvelope`（`SCHEMA_VERSION = 1`）
+- `ErrorCode` / `ErrorScope` / `TransferError`
+- `TransferService` 骨架：`start` 只保存配置与事件通道，`send` / `respond_*` 返回 `NotImplemented`
+- 契约测试：`cargo test` 通过
+
+**Desktop agent 负责实现 core 内部**；不要单方面改事件字段、错误码或 `SCHEMA_VERSION`。
+
+### 2.5 不要动的部分
 
 - `apps/desktop/src-tauri/src/mcp_*.rs`
 - `apps/desktop/src/lib/sync.ts`、`db.ts`、`store.ts`（互传不参与任务同步）
@@ -90,7 +104,7 @@
 ## 4. 目标架构
 
 ```
-packages/transfer-core/                # 新增：独立 Rust crate，桌面/手机共用
+crates/transfer-core/                # 新增：独立 Rust crate，桌面/手机共用
   Cargo.toml
   src/lib.rs
   src/config.rs
@@ -116,9 +130,15 @@ apps/desktop/src/features/transfer/
 
 说明：
 
-- `packages/transfer-core` 是 **standalone Rust crate**，不属于 pnpm 包；桌面 Tauri 用 path 依赖，手机端 FRB 也用 path 依赖。
+- `crates/transfer-core` 是 **standalone Rust crate**，不属于 pnpm 包；桌面 Tauri 用 path 依赖，手机端 FRB 也用 path 依赖。
 - 不要把它做成根 Cargo workspace（会改变 Tauri 的 target 目录和构建行为）。
 - 桌面端只负责“Tauri 状态/事件/窗口/UI”，协议与文件流在 core 里。
+- 依赖写法：
+
+```toml
+# apps/desktop/src-tauri/Cargo.toml
+rtodo-transfer-core = { path = "../../../crates/transfer-core" }
+```
 
 ---
 
@@ -226,7 +246,7 @@ impl TransferService {
 
 **产出**：`docs/handoff/notes/desktop-transfer-spike.md`，记录实际 API、版本、坑。
 
-### Phase 1 · `packages/transfer-core`（2~3 天）
+### Phase 1 · `crates/transfer-core`（2~3 天）
 
 - [ ] 新建 standalone crate
 - [ ] 身份：生成/加载 PEM 证书 + 私钥，fingerprint（大写 hex）
@@ -371,8 +391,47 @@ pnpm dev:desktop
 - 分支：`feat/desktop-transfer`
 - 提交粒度：Spike / core / Tauri / UI / tests 分开
 - 不要提交：`target/`、`dist/`、`.sig`、私钥、`tmp/`
-- `packages/transfer-core` 是桌面/手机共用 crate：
+- `crates/transfer-core` 是桌面/手机共用 crate：
   - 桌面 agent 先建；手机 agent 通过 path 依赖消费
   - 任何 API/事件变更必须同步手机 handoff 的消费者
 - 完成后在 handoff 文档追加“实现记录”：实际 API、rev、已知差异、未完成项
 - 遇到需要用户决策的点（端口、默认接收目录、是否自动接受），先记录，不要擅自改产品行为
+
+---
+
+## 12. 并行开发约定（桌面 + 手机）
+
+两端可以同时开发，前提是**共享 core 单归属**：
+
+| 范围 | Owner | 规则 |
+|---|---|---|
+| `crates/transfer-core` 内部实现 | Desktop agent | 只有 desktop agent 改 `service.rs` / 协议实现 |
+| `apps/mobile`、FRB、Kotlin | Mobile agent | 只消费 core API；需要新 API 先提给 desktop agent |
+| 事件/错误码/`SCHEMA_VERSION` | 双方 | 任何改动必须同步两端 + `tests/contract.rs` |
+
+工作区：
+
+```powershell
+# 由主仓库统一创建，两个 agent 各进自己的目录
+git worktree add .worktrees/desktop -b feat/desktop-transfer
+git worktree add .worktrees/mobile  -b feat/mobile-transfer
+```
+
+合并顺序：
+
+1. `crates/transfer-core` skeleton（已在 master）
+2. Desktop 的 core 实现 + Tauri
+3. Mobile rebase 后接真实 core（之前可用 skeleton/mock 开发 UI）
+
+硬性禁止：
+
+- 两个 agent 同时修改 `crates/transfer-core`
+- 各自复制一套协议实现
+- 单方面改事件字段/错误码
+
+契约测试：
+
+```powershell
+cd crates/transfer-core
+cargo test
+```
