@@ -417,6 +417,9 @@ git worktree add .worktrees/desktop -b feat/desktop-transfer
 git worktree add .worktrees/mobile  -b feat/mobile-transfer
 ```
 
+> 主仓库已创建这两个 worktree，并补齐 Android `local.properties` 与 cargo vendor 链接。
+> 依赖安装（`pnpm install` / `flutter pub get`）由各 agent 首次执行。
+
 合并顺序：
 
 1. `crates/transfer-core` skeleton（已在 master）
