@@ -59,3 +59,14 @@ Desktop.ini
 
 # ────── Reasonix（AI 工作目录） ──────
 .reasonix/
+
+# ────── 离线 vendored 依赖（由 scripts/vendorize 生成，1.1G） ──────
+apps/desktop/src-tauri/vendor/
+apps/desktop/src-tauri/.cargo/
+
+# ────── 本地临时/探测产物（不入库） ──────
+/tmp/
+/.workbuddy/
+/*.obj
+/r-todo_*.exe
+
