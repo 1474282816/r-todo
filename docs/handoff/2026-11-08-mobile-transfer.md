@@ -108,6 +108,7 @@ apps/mobile/
 7. **UI 入口**：新增“互传”页面，从首页/设置进入；不改现有待办主流程。
 8. **接收确认**：未知设备必须人工确认；收藏设备自动接受默认关闭。
 9. **许可证**：LocalSend 为 Apache-2.0；复制/改写其 Rust 代码需保留声明与修改说明；不要使用 LocalSend 名称/图标做产品名。
+10. **UI 沿用 r-todo/Flutter 现有风格，不要被 LocalSend 的界面误导**；LocalSend 只作为协议参考。
 
 ---
 
@@ -330,6 +331,26 @@ CANCELLED | IO | UNKNOWN
 
 ---
 
+### 7.5 UI 风格约束（重要）
+
+LocalSend 只提供协议和传输逻辑，**不要照搬它的 Flutter 界面、Material 布局、图标、配色或文案**。互传页面必须像 r-todo 原有功能的一部分：
+
+- 参考 `lib/ui/home_page.dart`、`lib/ui/settings_page.dart`、`lib/ui/task_editor_sheet.dart`、`lib/ui/constants.dart`
+- 继续使用现有 ForUI 主题、间距、字号、圆角、列表行、底部弹层和空态文案
+- 图标保持现有风格；不要引入第二套图标库或设计系统
+- 深浅色跟随系统；不要新增硬编码颜色，优先复用/扩展 `constants.dart`
+- 互传入口放在现有首页/设置导航里，不要做成“另一个 App”的观感
+- 页面标题用「互传」，不要出现 LocalSend 字样
+- 传输列表、设备列表、进度条、确认弹窗都按现有列表/设置面板的密度和留白来做
+
+禁止：
+
+- Material AppBar / FloatingActionButton / 蓝色主色 / 大圆角卡片
+- LocalSend 的绿色品牌色、logo、页面结构
+- 直接复制 LocalSend 的 Dart UI 代码或 i18n 资源
+
+---
+
 ## 8. 构建与测试
 
 ```powershell
@@ -387,6 +408,7 @@ flutter_rust_bridge_codegen generate
 - [ ] 取消 / 拒绝 / 断线 / 存储不足
 - [ ] 端口占用、组播失败、手动 IP 可用
 - [ ] 现有待办、同步、四个小组件、通知、应用内更新正常
+- [ ] 互传页面与现有 ForUI 页面风格一致，没有 LocalSend 的视觉元素
 - [ ] `flutter analyze`、`flutter test`、`flutter build apk` 通过
 - [ ] 没有修改 iOS / 桌面端 / updater / 发版脚本
 

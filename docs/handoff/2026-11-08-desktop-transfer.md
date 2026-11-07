@@ -98,6 +98,7 @@
 5. **接收必须人工确认**；收藏设备可配置自动接受，默认关闭。
 6. **文件保存**：默认 `Downloads\r-todo`；用户可改接收目录；文件名由接收方清洗生成，绝不信任发送方路径。
 7. **许可证**：Apache-2.0，保留 `LICENSE` / `NOTICE`，注明修改；不要使用 LocalSend 的名称/图标做产品名。
+8. **UI 沿用 r-todo 现有风格，不要被 LocalSend 的界面误导**；LocalSend 只作为协议/传输逻辑参考。
 
 ---
 
@@ -332,6 +333,26 @@ impl TransferService {
 
 ---
 
+### 7.6 UI 风格约束（重要）
+
+LocalSend 只提供协议和传输逻辑，**不要参考它的界面、配色、图标和布局**。传输窗口必须像 r-todo 原有功能的一部分：
+
+- 参考 `apps/desktop/src/App.tsx`、`components/task/TaskRow.tsx`、`components/settings/SettingsPanel.tsx`、`components/ui/IconButton.tsx`
+- 继续用 Tailwind `neutral` 色系 + `dark:`；11~12px 小字号、`rounded-lg`、`bg-black/5 dark:bg-white/5`、细边框
+- 图标继续用 `lucide-react` 14~16px；不要引入第二套图标库
+- 按钮、开关、胶囊选项复用 `SettingsPanel` 的样式；不要新造一套组件
+- 主窗口 380×620 的挂件视觉不变；传输窗口可以更大，但字体、间距、圆角、颜色要一致
+- 窗口标题用「互传 · r-todo」，不要出现 LocalSend 字样
+- 深浅色都要检查；避免大面积模糊/重毛玻璃，传输列表不依赖 `backdrop-blur`
+
+禁止：
+
+- Material AppBar / 蓝色主色 / 大圆角卡片 / LocalSend 的绿色品牌色和 logo
+- 直接复制 LocalSend 的页面结构或文案
+- 为传输功能引入新的设计系统
+
+---
+
 ## 8. Windows 特有问题
 
 | 问题 | 处理 |
@@ -370,6 +391,7 @@ pnpm dev:desktop
 - [ ] 关闭应用后端口释放，重开可监听
 - [ ] 端口占用、防火墙拒绝、组播失败都有明确 UI 提示
 - [ ] 传输不影响主窗口拖动/置底/材质
+- [ ] 传输窗口与现有主窗口/设置面板风格一致，没有 LocalSend 的视觉元素
 - [ ] 不修改 updater / 发版脚本 / 任务同步
 
 ---
