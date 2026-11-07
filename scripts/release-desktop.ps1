@@ -1,15 +1,26 @@
-﻿# r-todo Desktop Release Script
-# Usage: ./scripts/release-desktop.ps1 [-Version <string>] [-SkipBuild] [-SkipTag] [-SkipRelease]
+﻿# r-todo Desktop Release Script (GitHub)
+# Usage:
+#   ./scripts/release-desktop.ps1 [-Version <x.y.z>] [-Notes <text>] [-SkipBuild] [-SkipTag] [-SkipRelease] [-DryRun]
 #
-# Configure Gitee Token (one-time):
-#   $env:GITEE_TOKEN = "your_token"
-#   [Environment]::SetEnvironmentVariable("GITEE_TOKEN", "your_token", "User")
+# Prerequisites:
+#   - gh CLI installed and logged in: `gh auth login`
+#   - pnpm + Rust + NSIS toolchain (Tauri build)
+#   - updater signing key (default: ~/.tauri/r-todo.key + ~/.tauri/r-todo.key.password)
+#     override with:
+#       $env:TAURI_SIGNING_PRIVATE_KEY_PATH = "C:\path\to\key"
+#       $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "password"
+#
+# Note:
+#   - 仓库为 private 时，Release/raw 资产不能被 App 匿名下载，自动更新要等仓库转 public。
+#   - latest.json 始终提交到 master（updater 读取 raw），Release 里也放一份作归档。
 
 param(
     [string]$Version,
+    [string]$Notes,
     [switch]$SkipBuild,
     [switch]$SkipTag,
-    [switch]$SkipRelease
+    [switch]$SkipRelease,
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,17 +33,20 @@ function Write-Utf8([string]$Path, [string]$Content) {
     [System.IO.File]::WriteAllText($Path, $Content, [System.Text.UTF8Encoding]::new($false))
 }
 
-# Parse repo info from git remote
-$remoteUrl = git remote get-url origin
-if ($remoteUrl -match 'gitee\.com[:/]([^/]+)/([^/.]+)') {
+# ── 解析 GitHub 仓库（支持 HTTPS / SSH remote） ──
+$remoteUrl = (git remote get-url origin).Trim()
+$cleanRemote = $remoteUrl -replace '\.git$', '' -replace '/$', ''
+if ($cleanRemote -match 'github\.com[:/]([^/]+)/([^/]+)$') {
     $owner = $Matches[1]
     $repo = $Matches[2]
 } else {
-    Write-Host "[ERR] Cannot parse Gitee repo from remote: $remoteUrl" -ForegroundColor Red
+    Write-Host "[ERR] Cannot parse GitHub repo from remote: $remoteUrl" -ForegroundColor Red
     exit 1
 }
+$repoSlug = "$owner/$repo"
+$expectedEndpoint = "https://raw.githubusercontent.com/$repoSlug/master/apps/desktop/latest.json"
 
-# Check working directory is clean
+# ── 工作区必须干净（避免把无关改动混进版本提交） ──
 $dirty = git status --porcelain
 if ($dirty) {
     Write-Host "[ERR] Uncommitted changes:" -ForegroundColor Red
@@ -40,17 +54,24 @@ if ($dirty) {
     exit 1
 }
 
-# Version files
+# ── gh CLI 检查 ──
+if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+    Write-Host "[ERR] gh CLI not found. Install it and run: gh auth login" -ForegroundColor Red
+    exit 1
+}
+gh auth status | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERR] gh is not logged in. Run: gh auth login" -ForegroundColor Red
+    exit 1
+}
+
+# ── 版本文件 ──
 $confPath = "apps/desktop/src-tauri/tauri.conf.json"
 $pkgPath = "apps/desktop/package.json"
 $cargoPath = "apps/desktop/src-tauri/Cargo.toml"
+$manifestPath = "apps/desktop/latest.json"
 
-function Get-CurrentVersion {
-    $conf = Read-Utf8 $confPath | ConvertFrom-Json
-    return $conf.version
-}
-
-$currentVersion = Get-CurrentVersion
+$currentVersion = (Read-Utf8 $confPath | ConvertFrom-Json).version
 Write-Host "[INFO] Current version: $currentVersion" -ForegroundColor Cyan
 
 if (-not $Version) {
@@ -64,7 +85,18 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
     exit 1
 }
 
-# Bump version if changed
+# ── updater endpoint 必须指向当前 GitHub 仓库 ──
+$conf = Read-Utf8 $confPath | ConvertFrom-Json
+$currentEndpoint = $conf.plugins.updater.endpoints[0]
+if ($currentEndpoint -ne $expectedEndpoint) {
+    Write-Host "[ERR] updater endpoint mismatch:" -ForegroundColor Red
+    Write-Host "  expected: $expectedEndpoint"
+    Write-Host "  actual:   $currentEndpoint"
+    Write-Host "  Update apps/desktop/src-tauri/tauri.conf.json first." -ForegroundColor Yellow
+    exit 1
+}
+
+# ── 版本号变更 ──
 if ($Version -ne $currentVersion) {
     Write-Host "[INFO] Bumping: $currentVersion -> $Version" -ForegroundColor Yellow
 
@@ -72,205 +104,195 @@ if ($Version -ne $currentVersion) {
     # PS 5.1 下 ConvertTo-Json | Write-Utf8 会把文件写成 0 字节（2026-09-14 事故）
     foreach ($path in @($confPath, $pkgPath)) {
         $content = Read-Utf8 $path
-        $content = $content -replace '"version"\s*:\s*"[^"]*"', '"version": "$Version"'
+        $content = $content -replace '"version"\s*:\s*"[^"]*"', '"version": "' + $Version + '"'
         Write-Utf8 $path $content
     }
 
     $cargoContent = Read-Utf8 $cargoPath
-    # Only replace version in [package] section (first occurrence, single line)
+    # 只替换 [package] 段的 version（第一处）
     $cargoContent = $cargoContent -replace '(\[package\][^\[]*?version = )"[^"]*"', "`$1`"$Version`""
     Write-Utf8 $cargoPath $cargoContent
 
+    # 刷新 Cargo.lock 里的包版本（否则 bump 提交里的 lock 仍是旧版本）
+    Push-Location "apps/desktop/src-tauri"
+    cargo check --quiet
+    $cargoExit = $LASTEXITCODE
+    Pop-Location
+    if ($cargoExit -ne 0) {
+        Write-Host "[ERR] cargo check failed after version bump" -ForegroundColor Red
+        exit 1
+    }
+
     git add $confPath $pkgPath $cargoPath "apps/desktop/src-tauri/Cargo.lock"
     git commit -m "chore: bump version to $Version"
-    # PS 5.1 下 2>&1 会把 native 的 stderr（gitee banner）包装成 NativeCommandError
-    # 并终止脚本——用 2>$null 只丢 stderr，退出码仍经 $LASTEXITCODE 检查
-    git push 2>$null
-    if ($LASTEXITCODE -ne 0) { Write-Host "[ERR] push failed" -ForegroundColor Red; exit 1 }
+    git push origin HEAD
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERR] push failed" -ForegroundColor Red
+        exit 1
+    }
     Write-Host "[OK] Version bumped and pushed" -ForegroundColor Green
 }
 
-# Build
-$setupExe = $null
+# ── 签名密钥 ──
+$keyPath = $env:TAURI_SIGNING_PRIVATE_KEY_PATH
+if (-not $keyPath) {
+    $keyPath = Join-Path $env:USERPROFILE ".tauri\r-todo.key"
+}
+$pwPath = Join-Path $env:USERPROFILE ".tauri\r-todo.key.password"
+
+if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+    if (-not (Test-Path $keyPath)) {
+        Write-Host "[ERR] Signing key not found: $keyPath" -ForegroundColor Red
+        Write-Host "  Set TAURI_SIGNING_PRIVATE_KEY_PATH or place the key at the default path." -ForegroundColor Yellow
+        exit 1
+    }
+    # build 阶段读取的是私钥内容（不是路径）
+    $env:TAURI_SIGNING_PRIVATE_KEY = Read-Utf8 $keyPath
+}
+if (-not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
+    if (Test-Path $pwPath) {
+        $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = (Read-Utf8 $pwPath).Trim()
+    } else {
+        Write-Host "[ERR] Signing key password not set." -ForegroundColor Red
+        Write-Host "  Set TAURI_SIGNING_PRIVATE_KEY_PASSWORD or create $pwPath" -ForegroundColor Yellow
+        exit 1
+    }
+}
+
+# ── Dry run ──
+if ($DryRun) {
+    $exeForVersion = "apps/desktop/src-tauri/target/release/bundle/nsis/r-todo_${Version}_x64-setup.exe"
+    Write-Host "[DRY RUN] repo       : $repoSlug" -ForegroundColor Cyan
+    Write-Host "[DRY RUN] version    : $currentVersion -> $Version"
+    Write-Host "[DRY RUN] endpoint   : $expectedEndpoint"
+    Write-Host "[DRY RUN] key        : $keyPath"
+    Write-Host "[DRY RUN] bundle     : $exeForVersion (exists: $(Test-Path $exeForVersion))"
+    Write-Host "[DRY RUN] build/tag/release: $(-not $SkipBuild)/$(-not $SkipTag)/$(-not $SkipRelease)"
+    exit 0
+}
+
+# ── 构建 ──
 if (-not $SkipBuild) {
     Write-Host "[INFO] Building (NSIS)..." -ForegroundColor Cyan
-    Set-Location apps/desktop
+    Push-Location apps/desktop
     pnpm tauri build
     $buildExit = $LASTEXITCODE
-    Set-Location ../..
+    Pop-Location
     if ($buildExit -ne 0) {
         Write-Host "[ERR] tauri build failed (exit $buildExit)" -ForegroundColor Red
         exit 1
     }
-
-    # Find the setup exe for this version（找不到必须报错，绝不 fallback 到旧包）
-    $setupExe = Get-ChildItem "apps/desktop/src-tauri/target/release/bundle/nsis/r-todo_${Version}_x64-setup.exe" -ErrorAction SilentlyContinue
-    if (-not $setupExe) {
-        Write-Host "[ERR] Bundle not found for v$Version（构建失败或文件名不符）" -ForegroundColor Red
-        exit 1
-    }
-    if ($setupExe) {
-        $sizeMB = [math]::Round($setupExe.Length / 1MB, 1)
-        Write-Host ""
-        Write-Host "[OK] Bundle: $($setupExe.Name) ($sizeMB MB)" -ForegroundColor Green
-
-        # Read signature file
-        $sigFile = $setupExe.FullName -replace '\.exe$', '.exe.sig'
-        $signature = ""
-        if (Test-Path $sigFile) {
-            $signature = (Get-Content $sigFile -Raw).Trim()
-            Write-Host "[OK] Signature found" -ForegroundColor Green
-        } else {
-            Write-Host "[WARN] .sig file not found: $sigFile" -ForegroundColor Yellow
-        }
-
-        # Generate update manifest
-        Write-Host "[INFO] Generating update manifest..." -ForegroundColor Cyan
-        $setupUrl = "https://gitee.com/$owner/$repo/releases/download/v$Version/$($setupExe.Name)"
-        $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-
-        $manifest = @{
-            version = $Version
-            notes = "r-todo v$Version"
-            pub_date = $pubDate
-            platforms = @{
-                "windows-x86_64" = @{
-                    signature = $signature
-                    url = $setupUrl
-                }
-            }
-        }
-
-        $manifestPath = "apps/desktop/latest.json"
-        # 先存变量再显式传参：ConvertTo-Json 输出的多行字符串经管道逐行绑定
-        # 到 Write-Utf8 的 $Content，会把文件写成空（2026-09-14 事故）
-        $manifestJson = $manifest | ConvertTo-Json -Depth 10
-        Write-Utf8 $manifestPath ([string]$manifestJson)
-        Write-Host "[OK] Update manifest: $manifestPath" -ForegroundColor Green
-    } else {
-        Write-Host "[WARN] Setup exe not found" -ForegroundColor Yellow
-    }
 }
 
-# Git Tag
+$setupExe = Get-Item "apps/desktop/src-tauri/target/release/bundle/nsis/r-todo_${Version}_x64-setup.exe" -ErrorAction SilentlyContinue
+if (-not $setupExe) {
+    Write-Host "[ERR] Bundle not found for v$Version (build failed or filename mismatch)" -ForegroundColor Red
+    exit 1
+}
+$sizeMB = [math]::Round($setupExe.Length / 1MB, 1)
+Write-Host "[OK] Bundle: $($setupExe.Name) ($sizeMB MB)" -ForegroundColor Green
+
+# ── 签名（build 通常会生成；缺失时补签） ──
+$sigPath = $setupExe.FullName -replace '\.exe$', '.exe.sig'
+if (-not (Test-Path $sigPath)) {
+    Write-Host "[INFO] Signature missing, signing bundle..." -ForegroundColor Cyan
+    Push-Location apps/desktop
+    pnpm tauri signer sign -f $keyPath -p $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD $setupExe.FullName
+    $signExit = $LASTEXITCODE
+    Pop-Location
+    if ($signExit -ne 0 -or -not (Test-Path $sigPath)) {
+        Write-Host "[ERR] Failed to sign bundle" -ForegroundColor Red
+        exit 1
+    }
+}
+$signature = (Read-Utf8 $sigPath).Trim()
+if (-not $signature) {
+    Write-Host "[ERR] Signature file is empty: $sigPath" -ForegroundColor Red
+    exit 1
+}
+Write-Host "[OK] Signature: $sigPath" -ForegroundColor Green
+
+# ── 生成 latest.json ──
+$notesText = if ($Notes) { $Notes } else { "r-todo v$Version" }
+$setupUrl = "https://github.com/$repoSlug/releases/download/v$Version/$($setupExe.Name)"
+$pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+$manifest = [ordered]@{
+    version = $Version
+    notes = $notesText
+    pub_date = $pubDate
+    platforms = [ordered]@{
+        "windows-x86_64" = [ordered]@{
+            signature = $signature
+            url = $setupUrl
+        }
+    }
+}
+$manifestJson = $manifest | ConvertTo-Json -Depth 10
+# 先存变量再显式传参：避免多行字符串逐行绑定到 $Content 把文件写空（2026-09-14 事故）
+Write-Utf8 $manifestPath ([string]$manifestJson)
+Write-Host "[OK] Update manifest: $manifestPath" -ForegroundColor Green
+
+# ── 提交 manifest ──
+git add $manifestPath
+$manifestDiff = git diff --cached --name-only
+if ($manifestDiff) {
+    git commit -m "chore: update manifest to v$Version"
+    git push origin HEAD
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[WARN] manifest push failed" -ForegroundColor Yellow
+    } else {
+        Write-Host "[OK] Manifest committed and pushed" -ForegroundColor Green
+    }
+} else {
+    Write-Host "[SKIP] Manifest unchanged" -ForegroundColor Yellow
+}
+
+# ── Tag ──
 $tagName = "v$Version"
 if (-not $SkipTag) {
+    git fetch origin --tags 2>$null | Out-Null
     $exists = git tag -l $tagName
     if (-not $exists) {
         git tag $tagName
         git push origin $tagName
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[ERR] Tag push failed" -ForegroundColor Red
+            exit 1
+        }
         Write-Host "[OK] Tag $tagName created and pushed" -ForegroundColor Green
     } else {
         Write-Host "[SKIP] Tag $tagName already exists" -ForegroundColor Yellow
     }
 }
 
-# Gitee Release
+# ── GitHub Release ──
 if (-not $SkipRelease) {
-    $token = $env:GITEE_TOKEN
-    if (-not $token) {
-        Write-Host ""
-        Write-Host "[WARN] GITEE_TOKEN not set, skipping Release" -ForegroundColor Yellow
-        Write-Host "  Set: `$env:GITEE_TOKEN = 'your_token'" -ForegroundColor Gray
-        Write-Host "  URL: https://gitee.com/profile/personal_access_tokens" -ForegroundColor Gray
+    gh release view $tagName --repo $repoSlug 2>$null | Out-Null
+    $releaseExists = ($LASTEXITCODE -eq 0)
+
+    if ($releaseExists) {
+        Write-Host "[INFO] Release $tagName exists, uploading assets (clobber)..." -ForegroundColor Cyan
+        gh release upload $tagName $setupExe.FullName $manifestPath --clobber --repo $repoSlug
     } else {
-        Write-Host ""
-        Write-Host "[INFO] Publishing to Gitee Release..." -ForegroundColor Cyan
-
-        $apiBase = "https://gitee.com/api/v5/repos/$owner/$repo"
-
-        # Check if release exists
-        $releaseExists = $false
-        $existing = $null
-        try {
-            $existing = Invoke-RestMethod -Uri "$apiBase/releases/tags/$tagName" -Method Get -Headers @{ Authorization = "token $token" }
-            if ($existing.tag_name -eq $tagName) {
-                $releaseExists = $true
-                Write-Host "[SKIP] Release $tagName exists, updating assets..." -ForegroundColor Yellow
-            }
-        } catch {}
-
-        if (-not $releaseExists) {
-            $releaseName = "r-todo v$Version"
-            $releaseBody = "## r-todo v$Version`n`n### Download`n- Windows x64: r-todo_${Version}_x64-setup.exe`n`n### Install`nRun the exe to install."
-
-            $bodyJson = @{
-                tag_name = $tagName
-                name = $releaseName
-                body = $releaseBody
-                prerelease = $false
-                target_commitish = "master"
-            } | ConvertTo-Json -Depth 10
-
-            $release = Invoke-RestMethod -Uri "$apiBase/releases" -Method Post `
-                -Headers @{ Authorization = "token $token"; "Content-Type" = "application/json" } `
-                -Body $bodyJson
-            Write-Host "[OK] Release created: $($release.html_url)" -ForegroundColor Green
-        }
-
-        # Upload asset
-        if ($setupExe) {
-            $releaseId = if ($releaseExists) { $existing.id } else { $release.id }
-            $uploadUrl = "$apiBase/releases/$releaseId/attach_files"
-
-            Write-Host "[INFO] Uploading $($setupExe.Name)..." -ForegroundColor Cyan
-            try {
-                $rawOutput = curl.exe -s -X POST "$uploadUrl" `
-                    -H "Authorization: token $token" `
-                    -F "file=@$($setupExe.FullName)"
-
-                # Extract JSON from output (may have extra chars)
-                $jsonMatch = [regex]::Match($rawOutput, '\{.*\}')
-                if ($jsonMatch.Success) {
-                    $result = $jsonMatch.Value | ConvertFrom-Json
-                    if ($result.browser_download_url) {
-                        Write-Host "[OK] Asset uploaded" -ForegroundColor Green
-                        Write-Host "  URL: $($result.browser_download_url)" -ForegroundColor Gray
-                    } else {
-                        Write-Host "[WARN] Upload response missing URL" -ForegroundColor Yellow
-                    }
-                } else {
-                    Write-Host "[WARN] Could not parse upload response" -ForegroundColor Yellow
-                }
-            } catch {
-                Write-Host "[WARN] Upload failed: $_" -ForegroundColor Yellow
-                Write-Host "  Manual: https://gitee.com/$owner/$repo/releases" -ForegroundColor Gray
-            }
-        }
-
-        # Upload latest.json to release
-        $manifestPath = "apps/desktop/latest.json"
-        if (Test-Path $manifestPath) {
-            $releaseId = if ($releaseExists) { $existing.id } else { $release.id }
-            $uploadUrl = "$apiBase/releases/$releaseId/attach_files"
-
-            Write-Host "[INFO] Uploading latest.json..." -ForegroundColor Cyan
-            try {
-                curl.exe -s -X POST "$uploadUrl" `
-                    -H "Authorization: token $token" `
-                    -F "file=@$manifestPath"
-                Write-Host "[OK] latest.json uploaded" -ForegroundColor Green
-            } catch {
-                Write-Host "[WARN] latest.json upload failed: $_" -ForegroundColor Yellow
-            }
-        }
-
-        Write-Host "[LINK] https://gitee.com/$owner/$repo/releases/tag/$tagName" -ForegroundColor Gray
+        Write-Host "[INFO] Creating Release $tagName..." -ForegroundColor Cyan
+        gh release create $tagName $setupExe.FullName $manifestPath --repo $repoSlug --title "r-todo v$Version" --notes $notesText
     }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERR] GitHub Release failed" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "[OK] Release: https://github.com/$repoSlug/releases/tag/$tagName" -ForegroundColor Green
 }
 
-# Commit and push latest.json
-$manifestPath = "apps/desktop/latest.json"
-if (Test-Path $manifestPath) {
-    git add $manifestPath
-    git commit -m "chore: update manifest to v$Version" 2>$null
-    git push 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[WARN] manifest push failed" -ForegroundColor Yellow
-    } else {
-        Write-Host "[OK] Manifest committed and pushed" -ForegroundColor Green
-    }
+# ── 私有仓库提醒 ──
+$isPrivate = gh repo view $repoSlug --json isPrivate --jq .isPrivate 2>$null
+if ([string]$isPrivate -and ([string]$isPrivate).Trim() -eq "true") {
+    Write-Host ""
+    Write-Host "[WARN] Repository is private. App auto-update will not work until it is public." -ForegroundColor Yellow
+    Write-Host "       Release assets and raw latest.json require authentication." -ForegroundColor Gray
 }
 
 Write-Host ""
 Write-Host "[DONE] Released: v$Version" -ForegroundColor Cyan
+Write-Host "  Manifest: $expectedEndpoint"
