@@ -1,11 +1,11 @@
 {
-    "version": "0.0.5",
-    "notes": "r-todo v0.0.5",
-    "pub_date": "2026-09-14T07:55:28Z",
-    "platforms": {
-        "windows-x86_64": {
-            "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTUTdGa1IxcHpSUkg1WjlVLzh4VExJNk0zdWVXdkJCZ2p6YkVjSFpRVEFPTjZoZENiZHIrN2lqZTdTTkc3WkRRMUcrVWRVSjZsZ3cvT0JMNTdWNTl3TDNVUFU2Q05mbndJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MzcyMzU3CWZpbGU6ci10b2RvXzAuMC41X3g2NC1zZXR1cC5leGUKTFRsSGM3eW9TWCtVN2kwN3Vac0lSR2tzRUFES3JSeEdXQ2tnMVVOeXFqd0R3VVViZVdjSFhGWmRnU2E1UzFjTHN4bW83aVg3T1ZQMVJuNjl3TGdFQlE9PQo=",
-            "url": "https://gitee.com/renrunqi/r-todo/releases/download/v0.0.5/r-todo_0.0.5_x64-setup.exe"
-        }
-    }
+    "version":  "0.0.9",
+    "notes":  "r-todo v0.0.9",
+    "pub_date":  "2026-11-07T17:45:57Z",
+    "platforms":  {
+                      "windows-x86_64":  {
+                                             "signature":  "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTaDc4QWd0RFJvNDhMUTEvNGNGNXd3cGU5bnNnQnBScUw0SlltNis2NzZ3TVp6aGR5bXhvY1JLc1YvT2FMUVh2RnFRN1krUzFmamNtb3RNSkRSVlc0NWRNR3oxS2JJNlFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MDczNTM3CWZpbGU6ci10b2RvXzAuMC45X3g2NC1zZXR1cC5leGUKTkZWZ1BVdG56bFl4R0poSjBQZW9GSmJ1TUltakhCOVpGZXVxVk1BK29udjRqRlJRQUFpaVlYdThYVnNDZG53UWZOT2xwTzRoMG1ibHJORG5RS1JXQWc9PQo=",
+                                             "url":  "https://github.com/1474282816/r-todo/releases/download/v0.0.9/r-todo_0.0.9_x64-setup.exe"
+                                         }
+                  }
 }

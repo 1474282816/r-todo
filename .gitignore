@@ -69,4 +69,5 @@ apps/desktop/src-tauri/.cargo/
 /.workbuddy/
 /*.obj
 /r-todo_*.exe
+/r-todo_*.exe.sig
 

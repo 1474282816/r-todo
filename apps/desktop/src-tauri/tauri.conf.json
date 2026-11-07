@@ -44,9 +44,9 @@
                                             ]
                             },
                     "updater":  {
-                                    "pubkey":  "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ0RDE5Q0Q2MTE1OUVDOTAKUldTUTdGa1IxcHpSUks2YVRCUENUQ2h6clIrRWtqcGtidVJKQ2huWjVyYzNOdm5UYnN2TDYyVWIK",
+                                    "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUzNjgzNEI0MjBDMEVGQTEKUldTaDc4QWd0RFJvNDVVM0piOFMrVThhRHgzbXBvbUE1T2RpUUVZTFlkNUZ0U2R1UlowVFk1S3QK",
                                     "endpoints":  [
-                                                      "https://gitee.com/renrunqi/r-todo/raw/master/apps/desktop/latest.json"
+                                                      "https://raw.githubusercontent.com/1474282816/r-todo/master/apps/desktop/latest.json"
                                                   ],
                                     "windows":  {
                                                     "installMode":  "passive"
