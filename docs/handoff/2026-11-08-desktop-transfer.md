@@ -1,6 +1,6 @@
 # Handoff · 桌面端局域网互传（LocalSend 兼容）
 
-> 基线：`master@9591256`（2026-11-08）
+> 基线：`master`（2026-11-08，含 `crates/transfer-core` skeleton）
 > 目标读者：接手实现的 agent
 > 目标平台：Windows（Tauri 2）
 > 预计工作量：MVP 1.5~2 周，可日常使用 3~4 周

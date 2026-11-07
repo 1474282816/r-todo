@@ -1,6 +1,6 @@
 # Handoff · 手机端局域网互传（Flutter + Rust core）
 
-> 基线：`master@9591256`（2026-11-08）
+> 基线：`master`（2026-11-08，含 `crates/transfer-core` skeleton）
 > 目标读者：接手实现的 agent
 > 目标平台：Android（iOS 明确不做）
 > 预计工作量：MVP 2~3 周，可日常使用 3~4 周
