@@ -1,5 +1,5 @@
 import { AnimatePresence, Reorder } from "framer-motion";
-import { CalendarDays, Settings2 } from "lucide-react";
+import { ArrowLeftRight, CalendarDays, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { invoke } from "@tauri-apps/api/core";
@@ -21,6 +21,7 @@ import {
 } from "./lib/snap";
 import { sortTasks } from "./lib/sort";
 import { useTaskStore } from "./lib/store";
+import { openTransferWindow } from "./lib/transfer";
 import { restoreSession } from "./lib/sync";
 import {
   embedToDesktop,
@@ -208,6 +209,17 @@ export default function App() {
             onClick={openMonth}
           >
             <CalendarDays size={14} />
+          </IconButton>
+          <IconButton
+            aria-label="互传"
+            title="局域网互传"
+            onClick={() =>
+              openTransferWindow().catch((e) =>
+                console.error("open_transfer_window failed:", e),
+              )
+            }
+          >
+            <ArrowLeftRight size={14} />
           </IconButton>
           <IconButton
             aria-label="设置"

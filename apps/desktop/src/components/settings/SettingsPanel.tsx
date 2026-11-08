@@ -54,6 +54,12 @@ import {
   setMcpEnabled,
   type McpTemplates,
 } from "../../lib/mcp";
+import {
+  getTransferState,
+  openTransferWindow,
+  startTransfer,
+  stopTransfer,
+} from "../../lib/transfer";
 
 interface Props {
   open: boolean;
@@ -84,6 +90,11 @@ export function SettingsPanel({ open, onClose }: Props) {
   const [mcpBusy, setMcpBusy] = useState(false);
   const [mcpRunning, setMcpRunning] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<keyof McpTemplates>("claude_code");
+
+  // 互传状态
+  const [transferEnabled, setTransferEnabled] = useState(false);
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
 
   // 同步状态
   const [sync, setSync] = useState<SyncStatus>(getSyncStatus());
@@ -122,6 +133,18 @@ export function SettingsPanel({ open, onClose }: Props) {
         setMcpRunning(r.running);
         setMcpError(r.error);
       });
+    }
+  }, [open]);
+
+  // 打开设置面板时读取互传运行态
+  useEffect(() => {
+    if (open) {
+      getTransferState()
+        .then((s) => {
+          setTransferEnabled(s.running);
+          setTransferError(s.error);
+        })
+        .catch((e) => setTransferError(String(e)));
     }
   }, [open]);
 
@@ -196,6 +219,24 @@ export function SettingsPanel({ open, onClose }: Props) {
       setMcpError(String(e));
     } finally {
       setMcpBusy(false);
+    }
+  };
+
+  const toggleTransfer = async () => {
+    setTransferBusy(true);
+    setTransferError(null);
+    try {
+      if (transferEnabled) {
+        await stopTransfer();
+        setTransferEnabled(false);
+      } else {
+        await startTransfer();
+        setTransferEnabled(true);
+      }
+    } catch (e) {
+      setTransferError(String(e));
+    } finally {
+      setTransferBusy(false);
     }
   };
 
@@ -461,6 +502,33 @@ export function SettingsPanel({ open, onClose }: Props) {
                   </div>
                 )}
               </div>
+            )}
+
+            {/* 局域网互传 */}
+            <Row
+              label="局域网互传"
+              desc="与官方 LocalSend / 其他 r-todo 设备互传文件"
+              checked={transferEnabled}
+              onToggle={toggleTransfer}
+              disabled={busy || transferBusy}
+            />
+            {transferEnabled && (
+              <div className="rounded-lg bg-black/5 px-3 py-2.5 dark:bg-white/5">
+                <div className="text-[10px] text-neutral-500">
+                  端口 53317 · 接收前需人工确认 · 端口被占用时请关闭官方 LocalSend
+                </div>
+                <button
+                  onClick={() =>
+                    openTransferWindow().catch((e) => setTransferError(String(e)))
+                  }
+                  className="mt-1.5 rounded bg-black/5 px-2 py-0.5 text-[10px] hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10"
+                >
+                  打开互传窗口
+                </button>
+              </div>
+            )}
+            {transferError && (
+              <div className="px-3 text-[10px] text-red-500">{transferError}</div>
             )}
 
             {/* 默认提前提醒 */}
