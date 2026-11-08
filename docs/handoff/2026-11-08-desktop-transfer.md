@@ -655,7 +655,12 @@ cargo run --example serve -- E:\tmp\inbox 53319
 - 注意：identifier 仍是 `dev.rtodo.desktop` 且开了**单实例**插件，运行前必须退出自己电脑上
   已安装的正式版，否则会被旧实例接管；同时会共用 `%APPDATA%\dev.rtodo.desktop` 配置目录
 
-### 14.7 仍需真机确认（无法自动化）
+### 14.7 用户真机验收（2026-11-08，已通过）
+
+用户把 release 单文件 exe 拷到自己的电脑、与手机端连同一局域网实测：
+**移动端与桌面端可以正常互传**。至此 Phase 4 的主要目标（跨端互通）完成。
+
+下面几项属于可选的边界条件，若后续遇到再针对性排查，不阻塞合并：
 
 - 官方 LocalSend（Windows/Android）双向互通、真实组播、防火墙首次弹窗
 - 带 PIN 的对端实测（协议层已用回环测试覆盖 `PIN_REQUIRED` / 正确 PIN 两条路径；
