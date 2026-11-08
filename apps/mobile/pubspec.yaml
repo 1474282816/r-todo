@@ -60,3 +60,11 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+# sqlite3 的 build hook 会从 GitHub Releases 下载预编译 libsqlite3，
+# 国内直连经常超时，这里改走 gh-proxy 代理（占位符由 hook 自己替换）。
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3
+      url_pattern: "https://gh-proxy.com/https://github.com/simolus3/sqlite3.dart/releases/download/$RELEASE_TAG/$FILENAME"
