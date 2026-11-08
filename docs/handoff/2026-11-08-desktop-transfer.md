@@ -617,7 +617,39 @@ cargo run --example send -- 127.0.0.1 53317 .\a.pdf
 cargo run --example serve -- E:\tmp\inbox 53319
 ```
 
-### 14.5 仍需真机确认（无法自动化）
+### 14.5 官方 LocalSend 客户端双向互通（自动化，2026-11-08）
+
+下载官方 **LocalSend CLI 1.18.2 Windows x86-64**（9.3 MB，与官方 Flutter 客户端共用
+同一套 `packages/core` 协议实现），在同一台机器上用两个端口跑双向验收：
+
+| 方向 | 做法 | 结果 |
+|---|---|---|
+| r-todo → 官方客户端 | `examples/send.rs` → 官方 CLI（TCP 53318）；用 CLI 的 `paired-v2.json` 预置我方 fingerprint 实现自动接受 | ✅ `official-interop.txt`（32 B）落到 CLI 的 destination，发送方 `会话结束: 完成` |
+| 官方客户端 → r-todo | 官方 CLI `-f <file>` + 设备列表 Enter；我方 `examples/serve.rs`（TCP 53317）自动接受 | ✅ `official-to-rtodo.txt`（32 B）落盘，`INCOMING / SAVED / ENDED=Completed` |
+
+细节与坑：
+
+- 官方 CLI 的 UDP 组播端口固定 **53317**，`--port` 只改 TCP 端口；两台进程可以共用
+  53317 的 UDP 组播绑定。
+- 本机多网卡（WLAN + WSL + ZeroTier + Tailscale）+ 回环导致**同机组播互相发现不到**，
+  所以用官方 CLI 的 `paired-v2.json`（配对设备 = 官方客户端的“手动 IP”）指定
+  `127.0.0.1:53317 / HTTPS`。真实手机在同一 Wi-Fi 下走正常组播。
+- `paired-v2.json` 格式：`{"version":1,"devices":{"<证书 fingerprint>":{"alias":"...","channels":[{"host":"...","port":...,"protocol":"HTTPS"}]}}}`，
+  放在 `%USERPROFILE%\.config\localsend-cli\`（或 `XDG_CONFIG_HOME`）。
+- 我方两端都复用官方 `localsend` core 的 client/server，协议版本 `2.2`，因此与官方
+  客户端互通由构造保证；真机测试主要验证的是 Flutter 客户端 UI、Android 存储/网络行为和
+  真实 Wi-Fi 组播。
+
+### 14.6 交付给真机测试的单文件 exe
+
+- 构建：`cargo build --release --bin r-todo-desktop`（release profile，前端由 tauri-build 内嵌）
+- 产物：`apps/desktop/src-tauri/target/release/r-todo-desktop.exe`，29.9 MB
+- 打包：`E:\r-todo\tmp\r-todo-transfer-preview.zip`，10 MB（免安装，解压即用）
+- 已冒烟：启动后窗口正常、按 `transfer-config.json` 自动起服务、53317 监听
+- 注意：identifier 仍是 `dev.rtodo.desktop` 且开了**单实例**插件，运行前必须退出自己电脑上
+  已安装的正式版，否则会被旧实例接管；同时会共用 `%APPDATA%\dev.rtodo.desktop` 配置目录
+
+### 14.7 仍需真机确认（无法自动化）
 
 - 官方 LocalSend（Windows/Android）双向互通、真实组播、防火墙首次弹窗
 - 带 PIN 的对端实测（协议层已用回环测试覆盖 `PIN_REQUIRED` / 正确 PIN 两条路径；
