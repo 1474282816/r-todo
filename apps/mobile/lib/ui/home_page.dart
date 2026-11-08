@@ -11,17 +11,17 @@ import '../data/task.dart';
 import '../state/task_store.dart';
 import '../update/update_checker.dart';
 import 'constants.dart';
-import 'settings_page.dart';
 import 'task_editor_sheet.dart';
 
-class HomePage extends ConsumerStatefulWidget {
-  const HomePage({super.key});
+/// 「待办」Tab 内容；header / 底部 Tab 由 `RootShell` 统一提供。
+class HomeView extends ConsumerStatefulWidget {
+  const HomeView({super.key});
 
   @override
-  ConsumerState<HomePage> createState() => _HomePageState();
+  ConsumerState<HomeView> createState() => _HomeViewState();
 }
 
-class _HomePageState extends ConsumerState<HomePage> {
+class _HomeViewState extends ConsumerState<HomeView> {
   final _inputController = TextEditingController();
   Priority _quickPriority = Priority.low;
 
@@ -146,49 +146,22 @@ class _HomePageState extends ConsumerState<HomePage> {
     final active = visible.where((t) => !t.isCompleted).toList();
     final done = visible.where((t) => t.isCompleted).toList();
 
-    return FScaffold(
-      header: FHeader(
-        title: Row(
-          children: [
-            const Text('待办事项'),
-            const Gap(8),
-            Text(
-              '(${active.length}/${visible.length})',
-              style: const TextStyle(
-                fontSize: 13,
-                color: Color(0xFF9CA3AF),
-              ),
-            ),
-          ],
+    return Column(
+      children: [
+        // 快速添加
+        _QuickAddBar(
+          controller: _inputController,
+          priority: _quickPriority,
+          onPriorityChange: (p) => setState(() => _quickPriority = p),
+          onSubmit: _quickAdd,
         ),
-        suffixes: [
-          FHeaderAction(
-            icon: const Icon(Icons.settings_outlined),
-            onPress: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => const SettingsPage(),
-              ),
-            ),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // 快速添加
-          _QuickAddBar(
-            controller: _inputController,
-            priority: _quickPriority,
-            onPriorityChange: (p) => setState(() => _quickPriority = p),
-            onSubmit: _quickAdd,
-          ),
-          const Gap(8),
-          Expanded(
-            child: visible.isEmpty
-                ? const _EmptyState()
-                : _TaskList(active: active, done: done),
-          ),
-        ],
-      ),
+        const Gap(8),
+        Expanded(
+          child: visible.isEmpty
+              ? const _EmptyState()
+              : _TaskList(active: active, done: done),
+        ),
+      ],
     );
   }
 }
