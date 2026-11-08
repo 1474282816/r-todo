@@ -3,6 +3,7 @@ package dev.rtodo.r_todo_mobile
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
+import dev.rtodo.r_todo_mobile.transfer.TransferPlugin
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -11,6 +12,8 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // 局域网互传的平台能力（SAF / MediaStore / 前台服务 / 组播锁）
+        flutterEngine.plugins.add(TransferPlugin())
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "r_todo/install")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

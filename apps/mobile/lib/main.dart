@@ -1,14 +1,26 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 
+import 'src/rust/frb_generated.dart';
 import 'state/task_store.dart';
 import 'sync/sync_service.dart';
-import 'ui/home_page.dart';
+import 'ui/root_shell.dart';
 import 'widget_manager.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 互传的 Rust 动态库只在 Android 上随包分发；初始化失败不阻塞待办主流程。
+  if (!kIsWeb && Platform.isAndroid) {
+    try {
+      await RustLib.init();
+    } catch (error) {
+      debugPrint('互传 Rust 初始化失败: $error');
+    }
+  }
   runApp(const ProviderScope(child: RTodoApp()));
 }
 
@@ -54,7 +66,7 @@ class _RTodoAppState extends ConsumerState<RTodoApp> {
         data: theme,
         child: child!,
       ),
-      home: const HomePage(),
+      home: const RootShell(),
     );
   }
 }

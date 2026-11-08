@@ -10,6 +10,10 @@ dist/
 *.log
 .pnpm-store/
 
+# ────── Rust / FRB 生成产物 ──────
+apps/mobile/rust/target/
+apps/mobile/android/app/src/main/jniLibs/
+
 # ────── Flutter ──────
 .dart_tool/
 .flutter-plugins

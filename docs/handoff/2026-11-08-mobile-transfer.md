@@ -466,3 +466,96 @@ git worktree add .worktrees/mobile  -b feat/mobile-transfer
 cd crates/transfer-core
 cargo test
 ```
+
+---
+
+## 13. 实现记录（2026-11-08，手机端 agent）
+
+### 13.1 版本与构建
+
+| 项 | 值 |
+|---|---|
+| Flutter / Dart | 3.47.8 / 3.13.7 |
+| Rust | 1.99.1 |
+| flutter_rust_bridge | 2.13.0（Rust + Dart + codegen 同版本） |
+| cargo-ndk / NDK | 4.1.2 / 28.2.13676358 |
+| Rust targets | aarch64-linux-android / armv7-linux-androideabi / x86_64-linux-android |
+| ABI | arm64-v8a、armeabi-v7a、x86_64 |
+
+构建：`apps/mobile/android/app/build.gradle.kts` 里 `buildRustLibs`（`cargo ndk ... build`）挂在 `preBuild`，`flutter build apk` 自动触发；`jniLibs` 与 `rust/target` 已 gitignore。详细踩坑见 `docs/handoff/notes/mobile-transfer-spike.md`。
+
+### 13.2 与本文契约的差异（已在代码注释说明）
+
+1. **FRB 两段式**：`start(config)` 返回 `MobileTransfer` 句柄，事件需再调 `subscribe()` 拿 `Stream<String>`。
+   - 原因：FRB 2.13 对「同时收 StreamSink 又返回 opaque」的函数只把流给 Dart，opaque 句柄被丢弃（Rust 端对象随即析构）。
+   - 语义未变：事件信封仍是 `schema_version: 1` + `type`。
+2. **新增内部能力（不属于协议）**：`pickFiles` 由 Kotlin 复制到 `cacheDir/transfer/outbox/` 并返回 `{path,name,size,mime}`；`saveToDownloads` 返回 `{uri,displayName}`；`cleanupCache` 接受路径数组。四个 `respond_*`/`reject`/`cancel` 与错误码完全按本文第 5 节。
+3. **接收落盘时序**：`respondPrepare` → 每个文件 `respondFile(sessionId, fileId, cacheDir/transfer/inbox/<fileId>)` → `completed` 事件带 `path` → Kotlin 写 MediaStore `Downloads/r-todo` → 清 cache。
+4. **PIN**：发送不预置 PIN；`send` 失败且错误码为 `PIN_REQUIRED`/`PIN_INVALID` 时，UI 弹一次输入框并用同一批 cache 文件重试。
+5. **收藏**：`transfer.favorites` 存在 shared_preferences；「自动接收收藏设备」默认关，与本文策略一致。
+
+### 13.3 文件清单
+
+```text
+apps/mobile/rust/                                   # FRB crate（新）
+  Cargo.toml  flutter_rust_bridge.yaml  src/lib.rs
+  src/api/transfer.rs  src/config_check.rs  src/event_json.rs  src/error_json.rs
+  src/frb_generated.rs（生成，入库）
+apps/mobile/lib/features/transfer/                  # 新
+  transfer_page.dart（TransferView）  transfer_settings_page.dart
+  transfer_service.dart  transfer_event.dart  transfer_settings.dart
+  transfer_favorites.dart  transfer_error_text.dart
+apps/mobile/lib/src/rust/                            # FRB 生成（入库）
+apps/mobile/lib/ui/root_shell.dart                   # 底部 Tab（待办 / 互传）+ 统一 header
+apps/mobile/android/app/src/main/kotlin/dev/rtodo/r_todo_mobile/transfer/
+  TransferPlugin.kt  FileBridge.kt  TransferForegroundService.kt
+```
+
+改动：`lib/main.dart`（RustLib.init）、`MainActivity.kt`（注册插件）、`AndroidManifest.xml`（权限 + service）、`app/build.gradle.kts`、`gradle.properties`（`kotlin.incremental=false`，本机规避）、`pubspec.yaml`（flutter_rust_bridge）、`.gitignore`。
+
+### 13.4 验证
+
+```powershell
+cd apps/mobile/rust && cargo test --lib   # 17 passed
+cd apps/mobile && flutter analyze         # 仅 2 条既有 info
+cd apps/mobile && flutter test            # 38 passed
+cd apps/mobile && flutter build apk --debug  # 通过，三 ABI 均含 librtodo_mobile_transfer.so
+```
+
+雷电模拟器 14（x86_64 / Android 14）实测通过：Rust 初始化、页面渲染、开关启停、通知权限弹窗、手动 IP 错误链路、设置保存与持久化。
+另：接入真实 core 后 `cd crates/transfer-core && cargo test` 17 passed；`flutter build apk --release` 与 `--split-per-abi` 均通过，release 包在雷电上冒烟启动成功。
+
+**真机首轮反馈**：移动端 ↔ 桌面端双向互传正常；但发送完成后任务行仍显示「发送中 100%」。原因是 `Completed` 事件只有路径没有文件名，已在 Dart 侧暂存 `路径 → StagedFile` 并在完成时反查文件名，另加 `SessionEnded(completed)` 兜底；详情见 `docs/CHANGES.md`。
+
+模拟器验证过程中修复的两个真问题：
+
+1. `stop()` 先 await 事件流取消再改状态 → 取消慢时开关卡在「已开启」；改为先置 `stopped` 通知 UI，再带超时做清理。
+2. 手动 IP 弹窗在 `showDialog` 返回后立刻 dispose 控制器 → 关闭动画期间 `_dependents.isEmpty` 断言红屏；控制器改由弹窗自己持有。
+
+### 13.5 core 已接入（2026-11-08 晚，为打真机安装包）
+
+桌面端 core 实现已提交（`b8d3f05` + `c83a9a9`）。手机端为打可安装的 release 包，把这两个提交涉及的
+`crates/transfer-core/**`、`crates/vendor/localsend-core/**` **原样同步**到本 worktree（排除 `target/`），
+**未修改任何协议代码**；目前是工作区改动，正式的 merge/rebase 待用户决定后执行。
+
+适配点（都在手机端壳层）：
+
+- `TransferConfig` 新增 `identity_dir` / `verify_checksums`：前者用 App 私有文档目录持久化证书与 fingerprint，后者固定 `true`
+- `MobileTransferConfig` / `TransferLaunchConfig` 增加对应字段，重新生成 FRB 绑定
+- Rust 单测改用递增端口，避免真实 core 并行 bind 53317 冲突
+- `assembleRelease` 自动切 Rust release；`--split-per-abi` 时跳过 `ndk.abiFilters`
+
+验证：`cargo test`（core 17）、FRB crate 17、Dart 38、`flutter analyze` 仅 2 条既有 info、
+release APK 签名 v2 验签通过、雷电上冒烟启动真实 core 成功（开关显示「已开启」）。
+
+### 13.6 剩余（需真机）
+
+按第 10 节验收清单：组播发现、双向收发、SAF 选文件、MediaStore 落盘、前台服务通知与进度、
+后台/锁屏、取消/拒绝/断线、0 字节 / 1GB+ / 中文名 / 重名 / 多文件，以及与桌面端 r-todo 和官方 LocalSend 的互通。
+雷电默认 NAT 只能出站，完整双向必须用真机。
+
+安装包输出：`apps/mobile/build/app/outputs/flutter-apk/`（`app-arm64-v8a-release.apk` 为手机首选）。
+- **Android 16 本地网络权限**：targetSdk 36 下若真机要求 nearby/local network 授权，需在目标机型补权限与引导（本期未加，等实测确认）。
+- **后台提醒**：应用在后台收到未知设备的请求时，会用前台服务发「收到文件」通知；Android 12+ 对后台启动前台服务有系统限制，已 try/catch 不崩，但极少数机型可能收不到该通知（回到前台仍会弹确认）。
+- **API 24~28 存储权限**：写公共 Downloads 需要运行时的 `WRITE_EXTERNAL_STORAGE`，首次保存会请求一次，用户拒绝后需手动授予。
+- **iOS**：未改动。
