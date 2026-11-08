@@ -8,6 +8,7 @@ mod mcp_tools;
 mod month_window;
 mod notifier;
 mod snap;
+mod transfer;
 
 #[cfg(target_os = "windows")]
 mod rounded;
@@ -95,11 +96,14 @@ pub fn run() {
             // ── 系统托盘 ──
             let show_item = MenuItemBuilder::with_id("show", "显示主窗口").build(app)?;
             let hide_item = MenuItemBuilder::with_id("hide", "隐藏窗口").build(app)?;
+            let transfer_item = MenuItemBuilder::with_id("transfer", "打开互传").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
             let menu = MenuBuilder::new(app)
                 .item(&show_item)
                 .item(&hide_item)
+                .separator()
+                .item(&transfer_item)
                 .separator()
                 .item(&quit_item)
                 .build()?;
@@ -120,6 +124,14 @@ pub fn run() {
                             if let Some(window) = app.get_webview_window("main") {
                                 let _ = window.hide();
                             }
+                        }
+                        "transfer" => {
+                            let handle = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                if let Err(e) = transfer::open_transfer_window(handle).await {
+                                    eprintln!("[transfer] open window failed: {e}");
+                                }
+                            });
                         }
                         "quit" => {
                             app.exit(0);
@@ -147,6 +159,10 @@ pub fn run() {
                 eprintln!("[mcp] start failed: {e}");
             }
 
+            // 互传：状态托管 + 按设置决定是否随应用启动
+            app.manage(transfer::TransferState::new());
+            transfer::auto_start(app.handle());
+
             let _ = window;
             Ok(())
         })
@@ -167,7 +183,26 @@ pub fn run() {
             mcp_server::set_mcp_enabled,
             mcp_server::rotate_mcp_token,
             mcp_server::get_mcp_running,
+            transfer::open_transfer_window,
+            transfer::transfer_get_state,
+            transfer::transfer_start,
+            transfer::transfer_stop,
+            transfer::transfer_set_settings,
+            transfer::transfer_discover,
+            transfer::transfer_add_manual_ip,
+            transfer::transfer_send,
+            transfer::transfer_respond_prepare,
+            transfer::transfer_respond_file,
+            transfer::transfer_pending,
+            transfer::transfer_reject,
+            transfer::transfer_cancel,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // 退出时停掉互传服务并等待端口释放
+            if let tauri::RunEvent::Exit = event {
+                transfer::shutdown_blocking(app);
+            }
+        });
 }

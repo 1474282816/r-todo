@@ -54,6 +54,9 @@ rand = "0.10"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "gif", "webp"] }
 base64 = "0.22"
 
+# 局域网互传（LocalSend 兼容，共享 core）
+rtodo-transfer-core = { path = "../../../crates/transfer-core" }
+
 # MCP server（streamable HTTP）
 # rusqlite 0.40 需要 libsqlite3-sys ^0.38，与 tauri-plugin-sql(sqlx) 的 libsqlite3-sys 0.28 冲突；
 # 降到 0.31（同用 libsqlite3-sys 0.28）以共存
