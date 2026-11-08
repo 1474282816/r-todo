@@ -49,6 +49,7 @@ dependencies:
 
   # HTTP（更新检测/下载）
   http: ^1.2.0
+  flutter_rust_bridge: 2.13.0
 
 dev_dependencies:
   flutter_test:

@@ -41,3 +41,21 @@ flutter pub get
 参考：<https://pub.dev/packages/home_widget#-ios-setup>
 
 以上两块**留到实现阶段做**，骨架阶段只保证 Dart 侧和 pubspec 就绪。
+
+## 互传（Rust / FRB）构建
+
+`android/`、`ios/` 已经生成，日常构建直接用 `flutter build apk`。新增的 Rust 互传库需要：
+
+```powershell
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+cargo install cargo-ndk --locked
+cargo install flutter_rust_bridge_codegen --version 2.13.0 --locked
+# NDK 用 Flutter 默认版本（当前 28.2.13676358）
+D:\Android\cmdline-tools\latest\bin\sdkmanager.bat --sdk_root=D:\Android "ndk;28.2.13676358"
+```
+
+- `apps/mobile/rust/` 是 FRB crate，path 依赖 `crates/transfer-core`
+- `flutter build apk` 会先跑 Gradle 任务 `buildRustLibs`（`cargo ndk`）产出 `android/app/src/main/jniLibs/<abi>/librtodo_mobile_transfer.so`
+- 改了 `rust/src/api/` 的签名后要重跑 `flutter_rust_bridge_codegen generate`
+- ABI 默认三套（`arm64-v8a,armeabi-v7a,x86_64`）；`-PrtodoAbis=arm64-v8a,x86_64` 可收窄
+- 详细版本矩阵与踩坑：`docs/handoff/notes/mobile-transfer-spike.md`
