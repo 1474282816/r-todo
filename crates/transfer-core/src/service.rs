@@ -19,8 +19,9 @@ use crate::identity::Identity;
 use crate::path;
 use crate::server::{self, ServerRuntime};
 use crate::{
-    DeviceInfo, DeviceSummary, Direction, ErrorCode, ErrorScope, EventEnvelope, EventSender,
-    FileInfo, PendingIncoming, SessionEndReason, TransferConfig, TransferError, TransferEvent,
+    ChatMessage, DeviceInfo, DeviceSummary, Direction, ErrorCode, ErrorScope, EventEnvelope,
+    EventSender, FileInfo, PendingIncoming, SessionEndReason, TransferConfig, TransferError,
+    TransferEvent,
 };
 
 /// 接收进度节流间隔。
@@ -92,7 +93,7 @@ impl TransferService {
             }
         };
 
-        let server_rt = Arc::new(server::start(&config, &identity).await?);
+        let server_rt = Arc::new(server::start(&config, &identity, event_tx.clone()).await?);
 
         let (disc_tx, disc_rx) = mpsc::channel(64);
         let discovery_rt = Arc::new(discovery::start(&config, &identity, disc_tx).await);
@@ -227,6 +228,18 @@ impl TransferService {
         fingerprint: &str,
         pin: Option<String>,
     ) -> Result<String, TransferError> {
+        self.send_with_previews(files, fingerprint, pin, HashMap::new())
+            .await
+    }
+
+    /// 会话式图片消息：缩略图塞进 `FileDto.preview`，接收方确认前即可预览。
+    pub async fn send_with_previews(
+        &self,
+        files: Vec<PathBuf>,
+        fingerprint: &str,
+        pin: Option<String>,
+        previews: HashMap<PathBuf, String>,
+    ) -> Result<String, TransferError> {
         if files.is_empty() {
             return Err(client::protocol_error(
                 ErrorScope::Send,
@@ -279,6 +292,7 @@ impl TransferService {
         let request = SendRequest {
             session_id: session_id.clone(),
             files,
+            previews,
             pin,
             alias: self.inner.config.alias.clone(),
             local_port: self.inner.port,
@@ -306,6 +320,48 @@ impl TransferService {
         });
 
         Ok(session_id)
+    }
+
+    /// 发送一条会话消息（文本 / 图片元数据 / 信任回执）。
+    /// 对端离线或不支持会话时返回错误，壳层据此把消息留在 outbox 排队补投。
+    pub async fn send_message(
+        &self,
+        fingerprint: &str,
+        message: &ChatMessage,
+    ) -> Result<(), TransferError> {
+        let device = {
+            let devices = self.inner.devices.lock().await;
+            devices
+                .iter()
+                .find(|d| d.fingerprint.eq_ignore_ascii_case(fingerprint))
+                .cloned()
+        }
+        .ok_or_else(|| {
+            client::protocol_error(
+                ErrorScope::Send,
+                ErrorCode::Unknown,
+                "目标设备不在线，消息已保留在待发送队列".to_string(),
+            )
+        })?;
+
+        let channel = device.channels.first().cloned().ok_or_else(|| {
+            client::protocol_error(
+                ErrorScope::Send,
+                ErrorCode::Unknown,
+                "目标设备没有可用地址".to_string(),
+            )
+        })?;
+
+        client::send_chat_message(
+            &self.inner.identity,
+            &channel.host,
+            channel.port,
+            discovery::protocol_type_of(channel.protocol),
+            &device.fingerprint,
+            &self.inner.identity.fingerprint,
+            message,
+        )
+        .await
     }
 
     /// 接收确认：接受的文件 id 子集；传空表示拒绝。
@@ -685,6 +741,7 @@ async fn handle_server_event(
                     size: f.size,
                     file_type: Some(f.file_type.clone()),
                     sha256: f.sha256.clone(),
+                    preview: f.preview.clone(),
                 })
                 .collect();
             file_infos.sort_by(|a, b| a.file_name.cmp(&b.file_name));

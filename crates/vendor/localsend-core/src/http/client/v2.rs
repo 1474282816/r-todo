@@ -59,6 +59,27 @@ impl LsHttpClientV2 {
         Ok(Self { client })
     }
 
+    /// r-todo 会话式扩展：向自定义端点 POST 一段 JSON，复用同一套 mTLS/证书钉住。
+    /// 返回状态码，非 2xx 由调用方处理。
+    pub async fn post_json(
+        &self,
+        protocol: ProtocolType,
+        ip: &str,
+        port: u16,
+        path: &str,
+        body: &serde_json::Value,
+    ) -> Result<StatusCode, ClientError> {
+        let url = format!("{}://{}:{}{}", protocol.as_str(), ip, port, path);
+        let res = self
+            .client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .body(body.to_string())
+            .send()
+            .await?;
+        Ok(res.status())
+    }
+
     /// Registers with another device for discovery.
     ///
     /// POST /api/localsend/v2/register

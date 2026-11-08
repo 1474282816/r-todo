@@ -1,7 +1,7 @@
 use rtodo_transfer_core::{
-    DeviceChannel, DeviceInfo, DeviceSummary, Direction, ErrorCode, ErrorScope, EventEnvelope,
-    FileInfo, Protocol, SessionEndReason, TransferConfig, TransferEvent, TransferService,
-    DEFAULT_PORT, SCHEMA_VERSION,
+    ChatMessage, DeviceChannel, DeviceInfo, DeviceSummary, Direction, ErrorCode, ErrorScope,
+    EventEnvelope, FileInfo, MessageKind, Protocol, SessionEndReason, TransferConfig,
+    TransferEvent, TransferService, DEFAULT_PORT, SCHEMA_VERSION,
 };
 
 #[test]
@@ -42,6 +42,7 @@ fn incoming_event_keeps_file_fields() {
             size: 12345,
             file_type: Some("application/pdf".into()),
             sha256: None,
+            preview: None,
         }],
     });
 
@@ -158,4 +159,71 @@ async fn service_starts_and_stops_on_free_port() {
 
     service.stop().await.expect("stop");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn schema_version_is_v2() {
+    assert_eq!(SCHEMA_VERSION, 2);
+}
+
+#[test]
+fn message_event_has_frozen_shape() {
+    let message =
+        ChatMessage::new("m1", "PEER", "SELF", "PC", MessageKind::Text, "你好");
+    let envelope = EventEnvelope::new(TransferEvent::Message { message });
+    let value = envelope.to_json_value().expect("serialize");
+
+    assert_eq!(value["schema_version"], 2);
+    assert_eq!(value["type"], "message");
+    assert_eq!(value["message"]["kind"], "text");
+    assert_eq!(value["message"]["body"], "你好");
+    assert_eq!(value["message"]["conversation_id"], "PEER");
+
+    let back: EventEnvelope = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(back, envelope);
+}
+
+#[test]
+fn trust_message_roundtrips() {
+    let message = ChatMessage::new("m2", "PEER", "SELF", "PC", MessageKind::Trust, "trust");
+    let envelope = EventEnvelope::new(TransferEvent::Message { message });
+    let json = envelope.to_json_string().expect("serialize");
+    let back: EventEnvelope = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(back, envelope);
+}
+
+#[test]
+fn incoming_preview_is_optional_but_preserved() {
+    let mut file = FileInfo {
+        id: "f1".into(),
+        file_name: "a.png".into(),
+        size: 10,
+        file_type: Some("image/png".into()),
+        sha256: None,
+        preview: Some("BASE64".into()),
+    };
+    let envelope = EventEnvelope::new(TransferEvent::Incoming {
+        session_id: "s".into(),
+        ip: "192.168.1.9".into(),
+        device: DeviceSummary {
+            alias: "Phone".into(),
+            fingerprint: "FP".into(),
+        },
+        files: vec![file.clone()],
+    });
+    let value = envelope.to_json_value().expect("serialize");
+    assert_eq!(value["files"][0]["preview"], "BASE64");
+
+    file.preview = None;
+    let envelope = EventEnvelope::new(TransferEvent::Incoming {
+        session_id: "s".into(),
+        ip: "192.168.1.9".into(),
+        device: DeviceSummary {
+            alias: "Phone".into(),
+            fingerprint: "FP".into(),
+        },
+        files: vec![file],
+    });
+    let value = envelope.to_json_value().expect("serialize");
+    assert!(value["files"][0].get("preview").is_none());
 }

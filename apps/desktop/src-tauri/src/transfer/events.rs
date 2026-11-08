@@ -10,6 +10,7 @@ pub const PROGRESS: &str = "transfer-progress";
 pub const COMPLETED: &str = "transfer-completed";
 pub const ERROR: &str = "transfer-error";
 pub const SESSION_ENDED: &str = "transfer-session-ended";
+pub const MESSAGE: &str = "transfer-message";
 
 /// 返回 `(事件名, payload)`；payload 是带 `schema_version` 的完整信封。
 pub fn map(envelope: &EventEnvelope) -> (&'static str, serde_json::Value) {
@@ -20,6 +21,7 @@ pub fn map(envelope: &EventEnvelope) -> (&'static str, serde_json::Value) {
         TransferEvent::Completed { .. } => COMPLETED,
         TransferEvent::Error { .. } => ERROR,
         TransferEvent::SessionEnded { .. } => SESSION_ENDED,
+        TransferEvent::Message { .. } => MESSAGE,
     };
 
     let payload = serde_json::to_value(envelope).unwrap_or_else(|_| serde_json::json!({}));
@@ -39,7 +41,7 @@ mod tests {
         });
         let (name, payload) = map(&envelope);
         assert_eq!(name, "transfer-session-ended");
-        assert_eq!(payload["schema_version"], 1);
+        assert_eq!(payload["schema_version"], rtodo_transfer_core::SCHEMA_VERSION);
         assert_eq!(payload["session_id"], "s1");
         assert_eq!(payload["type"], "session_ended");
     }
@@ -57,5 +59,22 @@ mod tests {
         let (name, payload) = map(&envelope);
         assert_eq!(name, "transfer-progress");
         assert_eq!(payload["direction"], "receive");
+    }
+
+    #[test]
+    fn maps_message_to_hyphenated_name() {
+        let message = rtodo_transfer_core::ChatMessage::new(
+            "m1",
+            "PEER",
+            "SELF",
+            "PC",
+            rtodo_transfer_core::MessageKind::Text,
+            "你好",
+        );
+        let envelope = EventEnvelope::new(TransferEvent::Message { message });
+        let (name, payload) = map(&envelope);
+        assert_eq!(name, "transfer-message");
+        assert_eq!(payload["message"]["body"], "你好");
+        assert_eq!(payload["schema_version"], 2);
     }
 }

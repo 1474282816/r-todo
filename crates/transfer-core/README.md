@@ -14,8 +14,10 @@ r-todo 局域网互传的共享 Rust 核心（LocalSend 协议兼容）。
 
 ## 契约
 
-- `SCHEMA_VERSION = 1`
-- 事件：`devices` / `incoming` / `progress` / `completed` / `error` / `session_ended`
+- `SCHEMA_VERSION = 2`（开发期无旧版兼容负担；三端必须同版）
+- 事件：`devices` / `incoming` / `progress` / `completed` / `error` / `session_ended` / `message`
+- `message` 事件的 `message` 字段是 `ChatMessage`（`text` / `image` / `file` / `trust`），来自自定义端点 `/api/rtodo/v1/message`；`incoming.files[].preview` 复用 LocalSend `FileDto.preview` 携带图片缩略图
+- 信任与会话历史落在壳层：桌面 `sqlite:r-todo.db` 新增表，手机 Drift `schemaVersion=3` 只加表，**不碰 tasks**
 - 错误码：`PORT_IN_USE` / `FIREWALL` / `MULTICAST_UNAVAILABLE` / `TLS` / `PIN_REQUIRED` / `PIN_INVALID` / `REJECTED` / `CHECKSUM_MISMATCH` / `CANCELLED` / `IO` / `UNKNOWN`
 - 字段/错误码改动必须同步 `docs/handoff/2026-11-08-desktop-transfer.md`、`docs/handoff/2026-11-08-mobile-transfer.md` 和 `tests/contract.rs`
 

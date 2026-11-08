@@ -1,3 +1,4 @@
+pub mod chat;
 pub mod common;
 mod connection_limit;
 pub mod internal;
@@ -683,6 +684,11 @@ async fn handle_request_inner(mut req: Request<Incoming>) -> Result<Response<Box
             Ok(v3::register(req.into_body(), state, client_info)
                 .await?
                 .into_response())
+        }
+        // r-todo 会话式扩展（纯加法，不触碰任何 v2 路径/DTO）。
+        (&Method::GET, "/api/rtodo/v1/capabilities") => Ok(chat::capabilities()),
+        (&Method::POST, "/api/rtodo/v1/message") => {
+            chat::handle_message(req, client_info).await
         }
         _ => {
             let mut res = Response::new(response::empty_body());

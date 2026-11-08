@@ -50,6 +50,8 @@ fn is_network_error(err: &ClientError) -> bool {
 pub(crate) struct SendRequest {
     pub(crate) session_id: String,
     pub(crate) files: Vec<PathBuf>,
+    /// 图片缩略图（base64），按原始文件路径索引。
+    pub(crate) previews: HashMap<PathBuf, String>,
     pub(crate) pin: Option<String>,
     pub(crate) alias: String,
     pub(crate) local_port: u16,
@@ -203,7 +205,10 @@ async fn send_inner(state: &SendState, request: &SendRequest) -> Result<(), Tran
 
     let files_dto: HashMap<String, FileDto> = files
         .iter()
-        .map(|(id, path, size)| (id.clone(), build_file_dto(id, path, *size)))
+        .map(|(id, path, size)| {
+            let preview = request.previews.get(path).cloned();
+            (id.clone(), build_file_dto(id, path, *size, preview))
+        })
         .collect();
 
     let prepare = client
@@ -355,7 +360,7 @@ async fn upload_one(
     Ok(())
 }
 
-fn build_file_dto(id: &str, path: &PathBuf, size: u64) -> FileDto {
+fn build_file_dto(id: &str, path: &PathBuf, size: u64, preview: Option<String>) -> FileDto {
     FileDto {
         id: id.to_string(),
         file_name: path
@@ -366,9 +371,48 @@ fn build_file_dto(id: &str, path: &PathBuf, size: u64) -> FileDto {
         size,
         file_type: guess_mime(path),
         sha256: None,
-        preview: None,
+        preview,
         metadata: FileMetadata::from_path(path),
     }
+}
+
+/// 会话消息：POST 到对端自定义端点，复用同一套 mTLS + 证书钉住。
+/// 对端不是 r-todo（404）时返回明确错误，由壳层把消息留在 outbox 排队。
+pub(crate) async fn send_chat_message(
+    identity: &Identity,
+    host: &str,
+    port: u16,
+    protocol: ProtocolType,
+    peer_fingerprint: &str,
+    self_fingerprint: &str,
+    message: &crate::ChatMessage,
+) -> Result<(), TransferError> {
+    use localsend::http::client::v2::LsHttpClientV2;
+
+    let client = LsHttpClientV2::try_new(
+        &identity.private_key_pem,
+        &identity.cert_pem,
+        Some(peer_fingerprint.to_ascii_uppercase()),
+        Some(Duration::from_secs(5)),
+    )
+    .map_err(|e| protocol_error(ErrorScope::Send, ErrorCode::Tls, format!("初始化 TLS 失败: {e}")))?;
+
+    let body = serde_json::to_value(message.for_peer(self_fingerprint))
+        .map_err(|e| protocol_error(ErrorScope::Send, ErrorCode::Io, e.to_string()))?;
+
+    let status = client
+        .post_json(protocol, host, port, "/api/rtodo/v1/message", &body)
+        .await
+        .map_err(|e| protocol_error(ErrorScope::Send, ErrorCode::Io, format!("发送消息失败: {e}")))?;
+
+    if !status.is_success() {
+        return Err(protocol_error(
+            ErrorScope::Send,
+            ErrorCode::Unknown,
+            format!("对端未接收消息: HTTP {status}"),
+        ));
+    }
+    Ok(())
 }
 
 fn guess_mime(path: &PathBuf) -> String {

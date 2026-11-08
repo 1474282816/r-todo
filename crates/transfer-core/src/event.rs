@@ -1,12 +1,15 @@
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
+use crate::chat::ChatMessage;
 use crate::{DeviceInfo, DeviceSummary, ErrorCode, ErrorScope};
 
 /// 事件输出通道：壳层（Tauri / FRB）消费后映射成各自的事件系统。
 pub type EventSender = mpsc::Sender<EventEnvelope>;
 
-pub const SCHEMA_VERSION: u32 = 1;
+/// v2：会话式消息（开发期无旧版兼容负担，见 Q40/Q44）。
+/// 变更必须同步桌面 `events.rs`、手机 `transfer_event.dart` 与 `tests/contract.rs`。
+pub const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -33,6 +36,9 @@ pub struct FileInfo {
     pub file_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+    /// 图片缩略图（复用 LocalSend `FileDto.preview`，接收确认前即可预览）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
 }
 
 /// 平台无关事件。桌面端映射为 Tauri event，手机端映射为 Dart Stream。
@@ -71,6 +77,10 @@ pub enum TransferEvent {
     SessionEnded {
         session_id: String,
         reason: SessionEndReason,
+    },
+    /// 文本 / 图片元数据 / 信任回执，来自自定义消息端点。
+    Message {
+        message: ChatMessage,
     },
 }
 

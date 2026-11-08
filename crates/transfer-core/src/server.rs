@@ -11,7 +11,10 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::discovery::platform_name;
 use crate::identity::Identity;
-use crate::{ErrorCode, ErrorScope, TransferConfig, TransferError};
+use crate::{
+    ChatMessage, ErrorCode, ErrorScope, EventEnvelope, EventSender, TransferConfig, TransferError,
+    TransferEvent,
+};
 
 pub(crate) struct ServerRuntime {
     pub(crate) handle: Arc<ServerHandle>,
@@ -19,6 +22,8 @@ pub(crate) struct ServerRuntime {
     pub(crate) events: Mutex<Option<mpsc::Receiver<ServerEventV2>>>,
     pub(crate) port: u16,
     stop_tx: Mutex<Option<oneshot::Sender<()>>>,
+    /// 自定义消息端点 → 事件流的转发任务。
+    chat_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl ServerRuntime {
@@ -27,15 +32,35 @@ impl ServerRuntime {
             let _ = tx.send(());
         }
         self.handle.wait_stopped().await;
+        if let Some(task) = self.chat_task.lock().await.take() {
+            task.abort();
+        }
     }
 }
 
 pub(crate) async fn start(
     config: &TransferConfig,
     identity: &Identity,
+    event_tx: EventSender,
 ) -> Result<ServerRuntime, TransferError> {
-    let (event_tx, event_rx) = mpsc::channel::<ServerEventV2>(32);
+    let (server_event_tx, event_rx) = mpsc::channel::<ServerEventV2>(32);
     let (stop_tx, stop_rx) = oneshot::channel::<()>();
+
+    // 自定义消息端点：vendor 只负责把 JSON 交给这里，语义解析留在壳层。
+    let (chat_tx, mut chat_rx) = mpsc::channel::<serde_json::Value>(64);
+    localsend::http::server::chat::register_chat_sink(chat_tx);
+    let chat_task = tokio::spawn(async move {
+        while let Some(value) = chat_rx.recv().await {
+            match ChatMessage::from_json_value(value) {
+                Ok(message) => {
+                    let _ = event_tx
+                        .send(EventEnvelope::new(TransferEvent::Message { message }))
+                        .await;
+                }
+                Err(err) => eprintln!("[transfer] 忽略格式错误的会话消息: {err}"),
+            }
+        }
+    });
 
     let handle = start_with_port(
         config.port,
@@ -54,7 +79,7 @@ pub(crate) async fn start(
         Some(ServerConfigV2 {
             pin: config.pin.clone(),
             verify_checksums: config.verify_checksums,
-            event_tx,
+            event_tx: server_event_tx,
         }),
         WebConfig {
             mode: WebMode::Disabled,
@@ -73,6 +98,7 @@ pub(crate) async fn start(
         events: Mutex::new(Some(event_rx)),
         port,
         stop_tx: Mutex::new(Some(stop_tx)),
+        chat_task: Mutex::new(Some(chat_task)),
     })
 }
 

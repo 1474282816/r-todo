@@ -9,6 +9,7 @@
 //! - `SCHEMA_VERSION` 变更必须同时更新桌面端、手机端和 `tests/contract.rs`
 //! - 事件名/字段/错误码不允许单方面改动
 
+pub mod chat;
 mod client;
 mod config;
 mod device;
@@ -20,6 +21,7 @@ mod path;
 mod server;
 mod service;
 
+pub use chat::{ChatMessage, MessageKind, MessageStatus, MAX_PREVIEW_BYTES};
 pub use config::{TransferConfig, DEFAULT_PORT};
 pub use device::{DeviceChannel, DeviceInfo, DeviceSummary, PendingIncoming, Protocol};
 pub use error::{ErrorCode, ErrorScope, TransferError};

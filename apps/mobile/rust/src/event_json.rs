@@ -55,6 +55,7 @@ mod tests {
                 size: 1,
                 file_type: Some("application/pdf".into()),
                 sha256: None,
+                preview: None,
             }],
         });
 
