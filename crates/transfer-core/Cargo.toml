@@ -9,7 +9,22 @@ publish = false
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["sync"] }
+anyhow = "1"
+uuid = { version = "1", features = ["v4"] }
+tokio = { version = "1", features = ["sync", "rt", "time", "fs", "io-util", "macros"] }
+tokio-util = "0.7"
+
+# LocalSend 官方 Rust core（Apache-2.0）。
+#
+# 上游：https://github.com/localsend/localsend  `packages/core`
+# Rev ：58955fd54ef1e18e89ec30e60f46754084a80942（master，2026-11-08）
+#
+# 为什么不用 git 依赖：上游仓库带 `support/submodules/flutter` 子模块，cargo 在
+# 拉取任何 git 依赖时都会递归 fetch 子模块（Flutter 仓库，GB 级），本机网络必然
+# 失败，`[patch]` 也无法跳过这一步。因此源码原样 vendor 到
+# `crates/vendor/localsend-core`（未改一行逻辑，仅保留 LICENSE）。
+# 升级上游时：重新从上述 rev 拷贝 `packages/core` 覆盖，并跑 `cargo test`。
+localsend = { path = "../vendor/localsend-core", features = ["discovery"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "fs"] }
