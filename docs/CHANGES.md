@@ -37,6 +37,10 @@
 - 修复接收中途取消无效：原来只清会话槽，body 继续写、文件照样完整落盘。现在会停进度、
   反向给发送方发协议级 cancel、删除 `.part` 并丢弃半成品（新增回归测试）。
 - 离线设备报错改为中文提示，并自动从设备列表移除。
+- 修复发行版单文件 exe 白屏：`cargo build --release` 未带 `custom-protocol` 时会把
+  `devUrl(http://localhost:1420)` 编进产物，拷到无 vite 的机器上白屏。Cargo.toml 补
+  `[features] custom-protocol = ["tauri/custom-protocol"]`，产物改用 `--features custom-protocol`
+  构建，并已用「停 vite + 1420 探针 + PrintWindow 截图」验证内嵌资源生效。
 - 新增调试工具：`crates/transfer-core/examples/{multicast_probe,send,serve}.rs`。
 
 ### 已知限制

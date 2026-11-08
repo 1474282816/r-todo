@@ -642,10 +642,16 @@ cargo run --example serve -- E:\tmp\inbox 53319
 
 ### 14.6 交付给真机测试的单文件 exe
 
-- 构建：`cargo build --release --bin r-todo-desktop`（release profile，前端由 tauri-build 内嵌）
-- 产物：`apps/desktop/src-tauri/target/release/r-todo-desktop.exe`，29.9 MB
+- 构建（**必须带 `custom-protocol`**）：
+  `cargo build --release --features custom-protocol --bin r-todo-desktop`
+  否则 tauri-build 会把 `devUrl`（`http://localhost:1420`）编进产物，拷到没有 vite 的
+  机器上就是白屏/连不上（第一版 zip 踩过这个坑，已修）。Cargo.toml 已补
+  `[features] custom-protocol = ["tauri/custom-protocol"]`。
+- 产物：`apps/desktop/src-tauri/target/release/r-todo-desktop.exe`，约 30 MB
 - 打包：`E:\r-todo\tmp\r-todo-transfer-preview.zip`，10 MB（免安装，解压即用）
-- 已冒烟：启动后窗口正常、按 `transfer-config.json` 自动起服务、53317 监听
+- 已验证：exe 内嵌 `assets/index-C-mNEUpQ.js`（与 `dist/` 一致）；**停掉 vite、1420 无监听**
+  时启动，1420 端口监听探针没有任何连接，PrintWindow 截图确认 UI 正常渲染；
+  按 `transfer-config.json` 自动起服务、53317 监听
 - 注意：identifier 仍是 `dev.rtodo.desktop` 且开了**单实例**插件，运行前必须退出自己电脑上
   已安装的正式版，否则会被旧实例接管；同时会共用 `%APPDATA%\dev.rtodo.desktop` 配置目录
 

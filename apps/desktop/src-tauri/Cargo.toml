@@ -9,6 +9,12 @@ edition = "2021"
 name = "r_todo_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# 发行构建必须启用：让 tauri-build 把 frontendDist（../dist）内嵌进 exe。
+# 缺了它就会用 devUrl(http://localhost:1420)，拷到没有 vite 的机器上就是白屏。
+# `cargo build --release --features custom-protocol` / `tauri build` 会带上此 feature。
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
 
