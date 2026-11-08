@@ -1,5 +1,68 @@
 # 改动日志
 
+## 2026-11-08 · 手机端局域网互传（Rust core + FRB + Kotlin + Flutter UI）
+
+### 背景
+
+桌面端与手机端各自加局域网互传，共用 `crates/transfer-core`（LocalSend 协议兼容）。
+本期落手机端（Android）：Rust 协议层通过 FRB 暴露给 Dart，Kotlin 只做平台能力（SAF / MediaStore / 前台服务 / 组播锁），UI 沿用 r-todo 现有 ForUI 风格。
+
+### 改动
+
+- `crates/transfer-core`：未改（skeleton 仍由 Desktop agent 实现协议；手机端只消费 API）。
+- `apps/mobile/rust/`（新）：FRB crate，path 依赖 `crates/transfer-core`；`start` / `subscribe` / `send` / `respond_*` / `reject` / `cancel` / `stop`，事件以 JSON 字符串流回 Dart；16+1 个 Rust 单测覆盖配置校验、事件序列化、错误码映射。
+- `apps/mobile/lib/features/transfer/`（新）：
+  - `transfer_event.dart`：事件 JSON → 类型化模型（前向兼容未知事件）
+  - `transfer_service.dart`：`TransferBackend`（FRB）/ `TransferPlatform`（MethodChannel）双抽象 + `TransferController`（Riverpod）
+  - `transfer_page.dart` / `transfer_settings_page.dart`：开关、设备列表、手动 IP、发送进度、接收确认、PIN 重试、设置
+  - `transfer_settings.dart` / `transfer_favorites.dart` / `transfer_error_text.dart`：设置、收藏、错误码中文文案
+- Android：
+  - `transfer/TransferPlugin.kt`：MethodChannel `rtodo/transfer`（pickFiles / saveToDownloads / 组播锁 / 前后台服务 / 通知权限 / 清理 cache）
+  - `transfer/FileBridge.kt`：SAF → cache/transfer/outbox；cache/inbox → MediaStore `Downloads/r-todo`（API 29+，< 29 走公共目录）；文件名清洗与去重；24h 残留清理
+  - `transfer/TransferForegroundService.kt`：仅传输期间运行的前台服务（`dataSync` 类型 + 低打扰通知）
+  - `MainActivity` 注册插件；Manifest 加互传权限与 service；`build.gradle.kts` 加 `buildRustLibs`（cargo-ndk）+ ABI 过滤
+- `lib/main.dart`：Android 上 `RustLib.init()`（失败不阻塞待办主流程）；`home` 改为 `RootShell`
+- `lib/ui/home_page.dart` / `transfer_page.dart`：拆成 `HomeView` / `TransferView`（只留内容），header 与底部 Tab 收归 `RootShell`
+- 入口：底部 Tab（待办 / 互传），`lib/ui/root_shell.dart` 统一 header + 底部栏；互传 Tab 右上角进「互传设置」；首页 header 不再放互传图标，设置页也不再重复入口；两个 Tab 平级，系统返回键不拦截（任一 Tab 都直接退到桌面/后台）
+
+### 状态
+
+- ✅ `cargo test --lib` 17 passed；`flutter test` 38 passed；`flutter analyze` 仅 2 条既有 info；`flutter build apk --debug` 通过（三 ABI 均含 `librtodo_mobile_transfer.so`）
+- ✅ 雷电模拟器 14（x86_64 / Android 14）实测：Rust 初始化、互传页渲染、开关启停、手动 IP 错误链路、设置保存与持久化（`LDTest` 重启后仍在）、通知授权弹窗
+- ⚠️ 真实收发依赖 `crates/transfer-core` 的协议实现（Desktop agent 归属）；当前 core 为 skeleton，`send` / `respond_*` 返回 `NotImplemented`（UI 显示「传输出错，请重试」）
+- ⚠️ 待真机：SAF 选文件、MediaStore 落盘、前台服务通知、组播发现、后台/锁屏、与桌面端/官方 LocalSend 互通
+
+### 打真机安装包（2026-11-08 晚）
+
+- 把桌面端已提交的真实 core 实现（`b8d3f05` vendor LocalSend core + `c83a9a9` 协议实现）**逐文件同步**到本 worktree 的 `crates/transfer-core` 与 `crates/vendor`（排除 `target/`）；只消费、未改一行协议代码，符合 handoff §12 的 core 单归属约定。尚未做正式的 git merge/rebase，当前是工作区改动。
+- 适配新增配置：`identity_dir`（证书/私钥放 `getApplicationDocumentsDirectory()/transfer/identity`，fingerprint 重启不变）、`verify_checksums = true`；FRB `MobileTransferConfig` 与 Dart `TransferLaunchConfig` 同步加 `identityDir`，重新生成绑定。
+- Rust 单测改用递增端口（真实 core 会 bind 端口，并行测试不能都占 53317）。
+- Gradle：`assembleRelease` 自动用 `cargo ndk ... build --release`；`--split-per-abi` 时跳过 `ndk.abiFilters`（与 Flutter splits 冲突）。
+- 产物（均已签名，v2 验签通过）：
+  - `app-release.apk` 81.4MB（全 ABI 通用包）
+  - `app-arm64-v8a-release.apk` 29.6MB ← **绝大多数手机装这个**
+  - `app-armeabi-v7a-release.apk` 24.6MB / `app-x86_64-release.apk` 31.6MB
+- 校验：`cargo test`（core 17 个契约/HTTPS 回环）、FRB crate 17 个单测、`flutter analyze` 仅 2 条既有 info、`flutter test` 38 passed、release 包在雷电上冒烟启动成功且互传开关显示「已开启」（真实 core 成功绑端口）。
+
+### 真机首轮反馈：发送完成后仍显示「发送中 100%」
+
+- **原因**：core 的 `Completed` 事件只回传 cache 路径、`Progress` 也不带文件名；发送侧 `TransferTask.fileName` 一直是 null，UI 兜底显示「发送中」，且完成态右侧还在显示百分比。
+- **修复**：
+  - `TransferController` 暂存 `cache 路径 → StagedFile`，`Completed` 用 `path` 反查原始文件名（路径风格不一致时按 basename 匹配并去掉 uuid 前缀）
+  - `SessionEnded(completed)` 兜底：即使 `Completed` 丢失/乱序，也按文件大小反查文件名并置 `done`，不会永远卡在「发送中 100%」
+  - `_TaskRow` 完成态右侧改显示绿色「已完成」，取消按钮隐藏
+- 测试：controller 2 例 + widget 1 例；Dart 共 41 个测试通过。release 包已重打。
+
+### 模拟器验证中发现并修复的问题
+
+1. `stop()` 先 await 事件流取消再改状态，FRB 流取消慢时开关会卡在「已开启」→ 改为先置 `stopped` 通知 UI，再带超时做清理。
+2. 手动 IP 弹窗在 `showDialog` 返回后立刻 dispose `TextEditingController`，关闭动画期间触发 `_dependents.isEmpty` 断言红屏 → 控制器改由弹窗自身持有。
+
+### 构建注意
+
+- 本机 sqlite3 3.5.0 的 native assets 需要从 GitHub 下载，被墙时构建失败；解决办法见 `docs/handoff/notes/mobile-transfer-spike.md`
+- AGP 9 + Kotlin 2.3.20 在本机需要 `kotlin.incremental=false`
+
 ## 2026-09-14 · MCP 服务器（AI 操作待办）
 
 ### 背景
