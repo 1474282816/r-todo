@@ -44,3 +44,12 @@ pub struct DeviceSummary {
     pub alias: String,
     pub fingerprint: String,
 }
+
+/// 等待用户确认的接收请求（用于窗口重开/前端重载后恢复弹窗）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingIncoming {
+    pub session_id: String,
+    pub ip: String,
+    pub device: DeviceSummary,
+    pub files: Vec<crate::FileInfo>,
+}

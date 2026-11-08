@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 
 use crate::{DeviceInfo, DeviceSummary, ErrorCode, ErrorScope};
+
+/// 事件输出通道：壳层（Tauri / FRB）消费后映射成各自的事件系统。
+pub type EventSender = mpsc::Sender<EventEnvelope>;
 
 pub const SCHEMA_VERSION: u32 = 1;
 
