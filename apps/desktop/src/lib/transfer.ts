@@ -1,8 +1,8 @@
 /**
  * 局域网互传前端桥（Tauri commands + events）
  *
- * 事件契约见 docs/handoff/2026-11-08-desktop-transfer.md §5.2：
- * schema_version = 1，事件名 transfer-*。
+ * 事件契约 v2：`SCHEMA_VERSION = 2`，事件名 transfer-*（新增 transfer-message）。
+ * 三端形状由 crates/transfer-core/tests/contract.rs 冻结。
  */
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -14,6 +14,7 @@ export const TRANSFER_EVENTS = {
   completed: "transfer-completed",
   error: "transfer-error",
   sessionEnded: "transfer-session-ended",
+  message: "transfer-message",
 } as const;
 
 export interface TransferChannel {
@@ -38,6 +39,8 @@ export interface TransferFileInfo {
   size: number;
   file_type?: string;
   sha256?: string | null;
+  /** 图片缩略图 base64（FileDto.preview） */
+  preview?: string | null;
 }
 
 export interface TransferSettings {
@@ -55,6 +58,25 @@ export interface PendingIncoming {
   ip: string;
   device: { alias: string; fingerprint: string };
   files: TransferFileInfo[];
+}
+
+export type ChatMessageKind = "text" | "image" | "file" | "trust";
+export type ChatMessageStatus = "pending" | "sent" | "failed";
+
+/** 与 Rust `ChatMessage` 一一对应；开发期无旧版兼容负担（契约 v2）。 */
+export interface ChatMessage {
+  id: string;
+  conversation_id: string;
+  sender: string;
+  sender_alias: string;
+  kind: ChatMessageKind;
+  body: string;
+  file_path?: string | null;
+  file_size?: number | null;
+  preview?: string | null;
+  forwarded_from?: string | null;
+  created_at: number;
+  status: ChatMessageStatus;
 }
 
 export interface TransferStateView {
@@ -121,6 +143,11 @@ export type TransferEventPayload =
       type: "session_ended";
       session_id: string;
       reason: TransferSessionEndReason;
+    }
+  | {
+      schema_version: number;
+      type: "message";
+      message: ChatMessage;
     };
 
 export const ERROR_TEXT: Record<string, string> = {
@@ -223,6 +250,45 @@ export async function subscribeTransfer(
     ),
   );
   return () => unlisteners.forEach((fn) => fn());
+}
+
+// ───────────────────── 会话式互传命令 ─────────────────────
+
+export async function sendChatText(
+  fingerprint: string,
+  message: ChatMessage,
+): Promise<void> {
+  return invoke("chat_send_text", { fingerprint, message });
+}
+
+export async function sendChatFiles(
+  files: string[],
+  fingerprint: string,
+  previews: Record<string, string>,
+  pin?: string,
+): Promise<string> {
+  return invoke("chat_send_files", { files, fingerprint, previews, pin });
+}
+
+/** 只删接收副本；Rust 侧还有接收目录白名单兜底。 */
+export async function deleteChatFile(path: string): Promise<void> {
+  return invoke("chat_delete_file", { path });
+}
+
+export async function readFileBytes(path: string): Promise<number[]> {
+  return invoke("chat_read_file_bytes", { path });
+}
+
+export async function flashTransferWindow(): Promise<void> {
+  return invoke("chat_flash_window");
+}
+
+export async function copyChatFile(src: string, dest: string): Promise<void> {
+  return invoke("chat_copy_file", { src, dest });
+}
+
+export async function chatFileExists(path: string): Promise<boolean> {
+  return invoke("chat_file_exists", { path });
 }
 
 export function formatSize(bytes: number): string {

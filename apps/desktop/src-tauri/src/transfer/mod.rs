@@ -501,8 +501,8 @@ pub async fn open_transfer_window(app: AppHandle) -> Result<(), String> {
         WebviewUrl::App("index.html?view=transfer".into()),
     )
     .title("互传 · r-todo")
-    .inner_size(760.0, 560.0)
-    .min_inner_size(560.0, 420.0)
+    .inner_size(960.0, 600.0)
+    .min_inner_size(720.0, 480.0)
     .center()
     .resizable(true)
     .decorations(true)
@@ -511,6 +511,107 @@ pub async fn open_transfer_window(app: AppHandle) -> Result<(), String> {
     .build()
     .map_err(|e| format!("打开互传窗口失败: {e}"))?;
 
+    Ok(())
+}
+
+// ───────────────────────── 会话式互传命令 ─────────────────────────
+
+/// 删除白名单的纯函数部分（便于单测）：路径必须落在接收目录内。
+fn path_within(path: &std::path::Path, dir: &std::path::Path) -> bool {
+    path.starts_with(dir)
+}
+
+fn within_receive_dir(app: &AppHandle, path: &std::path::Path) -> bool {
+    let settings = load_settings(&settings_path(app));
+    path_within(path, &resolve_receive_dir(app, &settings))
+}
+
+#[tauri::command]
+pub async fn chat_send_text(
+    app: AppHandle,
+    fingerprint: String,
+    message: serde_json::Value,
+) -> Result<(), String> {
+    let state = app.state::<SharedTransferState>().inner().clone();
+    let guard = state.service.lock().await;
+    let Some(service) = guard.as_ref() else {
+        return Err("互传服务未启动".into());
+    };
+    let msg: rtodo_transfer_core::ChatMessage =
+        serde_json::from_value(message).map_err(|e| format!("消息格式错误: {e}"))?;
+    service
+        .send_message(&fingerprint, &msg)
+        .await
+        .map_err(error_text)
+}
+
+#[tauri::command]
+pub async fn chat_send_files(
+    app: AppHandle,
+    files: Vec<String>,
+    fingerprint: String,
+    previews: std::collections::HashMap<String, String>,
+    pin: Option<String>,
+) -> Result<String, String> {
+    let state = app.state::<SharedTransferState>().inner().clone();
+    let guard = state.service.lock().await;
+    let Some(service) = guard.as_ref() else {
+        return Err("互传服务未启动".into());
+    };
+    let paths: Vec<PathBuf> = files.iter().map(PathBuf::from).collect();
+    let preview_map = previews
+        .into_iter()
+        .map(|(path, base64)| (PathBuf::from(path), base64))
+        .collect();
+    service
+        .send_with_previews(paths, &fingerprint, pin.filter(|p| !p.is_empty()), preview_map)
+        .await
+        .map_err(error_text)
+}
+
+/// 删除消息的本地文件：**只删接收副本**，绝不删用户发送时的原始源文件（Q32）。
+#[tauri::command]
+pub async fn chat_delete_file(app: AppHandle, path: String) -> Result<(), String> {
+    let target = PathBuf::from(path.trim());
+    if !target.is_file() {
+        return Ok(());
+    }
+    if !within_receive_dir(&app, &target) {
+        return Err("只能删除接收目录中的文件，发送方原始文件不会被删".into());
+    }
+    std::fs::remove_file(&target).map_err(|e| e.to_string())
+}
+
+/// 前端生成图片缩略图 / 复制到剪贴板时读原图字节（上限 20MB）。
+#[tauri::command]
+pub async fn chat_read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    const MAX: u64 = 20 * 1024 * 1024;
+    let meta = std::fs::metadata(path.trim()).map_err(|e| e.to_string())?;
+    if meta.len() > MAX {
+        return Err("文件过大，无法预览".into());
+    }
+    std::fs::read(path.trim()).map_err(|e| e.to_string())
+}
+
+/// 右键「另存为」：复制一份到用户选择的位置。
+#[tauri::command]
+pub async fn chat_copy_file(src: String, dest: String) -> Result<(), String> {
+    std::fs::copy(src.trim(), dest.trim()).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 转发前确认原文件还在（Q31：被删则转发置灰）。
+#[tauri::command]
+pub async fn chat_file_exists(path: String) -> bool {
+    std::path::Path::new(path.trim()).is_file()
+}
+
+/// 窗口未聚焦时让任务栏图标闪（Q37/Q46）。
+#[tauri::command]
+pub async fn chat_flash_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(WINDOW_LABEL) {
+        let _ = window.request_user_attention(Some(tauri::UserAttentionType::Critical));
+    }
     Ok(())
 }
 
@@ -553,6 +654,17 @@ mod tests {
         assert_eq!(loaded.pin.as_deref(), Some("1234"));
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn delete_guard_only_allows_receive_dir() {
+        let dir = PathBuf::from("C:/Users/x/Downloads/r-todo");
+        assert!(path_within(&dir.join("a.png"), &dir));
+        assert!(!path_within(
+            &PathBuf::from("C:/Users/x/Pictures/original.png"),
+            &dir,
+        ));
+        assert!(!path_within(&PathBuf::from("C:/elsewhere/a.png"), &dir));
     }
 
     #[test]

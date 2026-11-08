@@ -10,13 +10,14 @@ import { ArrowLeftRight, FolderOpen, Loader2, Settings2, Wifi, X } from "lucide-
 import { useEffect, useState } from "react";
 
 import { cn } from "../../lib/cn";
+import { ChatApp } from "../chat/ChatApp";
 import { DeviceList } from "./DeviceList";
 import { ReceiveDialog } from "./ReceiveDialog";
 import { SendPanel } from "./SendPanel";
 import { TransferProgress } from "./TransferProgress";
 import { useTransfer } from "./useTransfer";
 
-export function TransferWindow() {
+function LegacyTransferView() {
   const {
     state,
     devices,
@@ -366,4 +367,26 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   );
+}
+
+/**
+ * `?view=transfer` 的入口：默认会话式双栏界面；
+ * 「高级设置」可切回已验收的旧「选设备 + 发文件」链路（Q13 不删除旧入口）。
+ */
+export function TransferWindow() {
+  const [legacy, setLegacy] = useState(false);
+  if (legacy) {
+    return (
+      <div className="relative h-full">
+        <button
+          onClick={() => setLegacy(false)}
+          className="absolute right-2 top-2 z-50 rounded bg-blue-500 px-2 py-1 text-[10px] text-white shadow"
+        >
+          返回消息
+        </button>
+        <LegacyTransferView />
+      </div>
+    );
+  }
+  return <ChatApp onLegacy={() => setLegacy(true)} />;
 }

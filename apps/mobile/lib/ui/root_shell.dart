@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:forui/forui.dart';
 import 'package:gap/gap.dart';
 
-import '../features/transfer/transfer_page.dart';
+import '../features/chat/chat_pages.dart';
 import '../features/transfer/transfer_settings_page.dart';
 import '../state/task_store.dart';
 import 'home_page.dart';
@@ -34,8 +34,8 @@ class _RootShellState extends ConsumerState<RootShell> {
             label: Text('待办'),
           ),
           FBottomNavigationBarItem(
-            icon: Icon(Icons.swap_horiz),
-            label: Text('互传'),
+            icon: Icon(Icons.chat_bubble_outline),
+            label: Text('消息'),
           ),
         ],
       ),
@@ -43,7 +43,7 @@ class _RootShellState extends ConsumerState<RootShell> {
         index: _index,
         children: const [
           HomeView(),
-          TransferView(),
+          ConversationListPage(),
         ],
       ),
     );
@@ -77,7 +77,7 @@ class _RootShellState extends ConsumerState<RootShell> {
 
   Widget _buildTransferHeader() {
     return FHeader(
-      title: const Text('互传'),
+      title: const Text('消息'),
       suffixes: [
         FHeaderAction(
           icon: const Icon(Icons.tune),

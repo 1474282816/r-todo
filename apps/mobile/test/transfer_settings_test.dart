@@ -15,7 +15,8 @@ void main() {
 
       expect(settings.port, 53317);
       expect(settings.alias, isNotEmpty);
-      expect(settings.autoAcceptFavorites, isFalse);
+      // Q36：已确认设备自动收文件，默认开。
+      expect(settings.autoAcceptFavorites, isTrue);
       expect(settings.pin, isNull);
       expect(settings.receiveDirName, 'r-todo');
     });

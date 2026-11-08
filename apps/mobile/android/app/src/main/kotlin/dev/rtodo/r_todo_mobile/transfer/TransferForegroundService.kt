@@ -32,12 +32,20 @@ class TransferForegroundService : Service() {
         private const val ACTION_STOP = "dev.rtodo.r_todo_mobile.transfer.STOP"
         private const val EXTRA_TITLE = "title"
         private const val EXTRA_TEXT = "text"
+        const val EXTRA_CONVERSATION = "conversation"
 
-        fun start(context: Context, title: String, text: String) {
+        /** conversation 不为空时，点通知会直接打开该设备会话（Q45）。 */
+        fun start(
+            context: Context,
+            title: String,
+            text: String,
+            conversation: String? = null,
+        ) {
             val intent = Intent(context, TransferForegroundService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_TITLE, title)
                 putExtra(EXTRA_TEXT, text)
+                if (conversation != null) putExtra(EXTRA_CONVERSATION, conversation)
             }
             try {
                 ContextCompat.startForegroundService(context, intent)
@@ -71,7 +79,8 @@ class TransferForegroundService : Service() {
             ACTION_START -> {
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "正在传输"
                 val text = intent.getStringExtra(EXTRA_TEXT) ?: ""
-                val notification = buildNotification(title, text)
+                val conversation = intent.getStringExtra(EXTRA_CONVERSATION)
+                val notification = buildNotification(title, text, conversation)
                 val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
                 } else {
@@ -91,10 +100,15 @@ class TransferForegroundService : Service() {
         super.onDestroy()
     }
 
-    private fun buildNotification(title: String, text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
+    private fun buildNotification(
+        title: String,
+        text: String,
+        conversation: String?,
+    ) = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(R.mipmap.ic_launcher)
         .setContentTitle(title)
         .setContentText(text)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(text))
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setSilent(true)
@@ -104,7 +118,9 @@ class TransferForegroundService : Service() {
             PendingIntent.getActivity(
                 this,
                 0,
-                Intent(this, MainActivity::class.java),
+                Intent(this, MainActivity::class.java).apply {
+                    if (conversation != null) putExtra(EXTRA_CONVERSATION, conversation)
+                },
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             ),
         )

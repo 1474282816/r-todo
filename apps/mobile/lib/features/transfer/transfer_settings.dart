@@ -6,7 +6,8 @@ class TransferSettings {
     this.alias = defaultAlias,
     this.port = defaultPort,
     this.pin,
-    this.autoAcceptFavorites = false,
+    // Q36：改叫「已确认设备自动收文件」，默认开；确认一次后后续免确认。
+    this.autoAcceptFavorites = true,
   });
 
   static const String defaultAlias = 'r-todo';
@@ -58,7 +59,7 @@ class TransferSettingsStore {
           ? TransferSettings.defaultPort
           : port,
       pin: (pin == null || pin.isEmpty) ? null : pin,
-      autoAcceptFavorites: prefs.getBool(_keyAutoAccept) ?? false,
+      autoAcceptFavorites: prefs.getBool(_keyAutoAccept) ?? true,
     );
   }
 

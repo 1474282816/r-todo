@@ -5,6 +5,8 @@ import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../features/chat/chat_message.dart';
+
 part 'database.g.dart';
 
 class Tasks extends Table {
@@ -40,21 +42,34 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
     return MigrationStrategy(
       onCreate: (m) async {
         await m.createAll();
+        await createChatTables();
       },
       onUpgrade: (m, from, to) async {
+        // 待办的迁移逻辑一行不动；v3 只新增会话表（Q44）。
         if (from == 1) {
           await m.addColumn(tasks, tasks.deleted);
           await m.createTable(pendingOps);
         }
+        if (from < 3) {
+          await createChatTables();
+        }
       },
     );
+  }
+
+  /// 会话表用 DDL 直接建，不新增 Drift Table 类，因此无需重新生成 database.g.dart，
+  /// 也完全不触碰 tasks / pending_ops。
+  Future<void> createChatTables() async {
+    for (final sql in chatTableDdl) {
+      await customStatement(sql);
+    }
   }
 
   Future<List<Task>> getAllTasks() =>
@@ -98,6 +113,171 @@ class AppDatabase extends _$AppDatabase {
                 t.completedAt.isBiggerOrEqualValue(startIso) &
                 t.completedAt.isSmallerThanValue(endIso)))
           .get();
+
+  // ─────────────── 会话式互传（新增表，不碰待办） ───────────────
+
+  Future<List<Map<String, dynamic>>> chatQuery(
+    String sql,
+    List<Variable> args,
+  ) async {
+    final rows = await customSelect(sql, variables: args).get();
+    return rows
+        .map((row) => Map<String, dynamic>.from(row.data))
+        .toList(growable: false);
+  }
+
+  Future<void> chatExec(String sql, List<Variable> args) =>
+      customStatement(sql, args);
+
+  Future<List<Map<String, dynamic>>> listChatConversations() => chatQuery(
+        'SELECT * FROM conversations ORDER BY pinned DESC, last_message_at DESC',
+        <Variable>[],
+      );
+
+  Future<void> upsertChatConversation(
+    String id,
+    String alias,
+    int at, {
+    int unreadDelta = 0,
+  }) =>
+      chatExec(
+        'INSERT INTO conversations (id, alias, last_message_at, unread) VALUES (?, ?, ?, ?) '
+        'ON CONFLICT(id) DO UPDATE SET alias = excluded.alias, '
+        'last_message_at = MAX(last_message_at, excluded.last_message_at), '
+        'unread = unread + excluded.unread',
+        <Variable>[
+          Variable<String>(id),
+          Variable<String>(alias),
+          Variable<int>(at),
+          Variable<int>(unreadDelta),
+        ],
+      );
+
+  Future<void> markChatRead(String id) => chatExec(
+        'UPDATE conversations SET unread = 0 WHERE id = ?',
+        <Variable>[Variable<String>(id)],
+      );
+
+  Future<List<Map<String, dynamic>>> listChatMessages(String conversationId) =>
+      chatQuery(
+        'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 300',
+        <Variable>[Variable<String>(conversationId)],
+      );
+
+  Future<void> insertChatMessage(ChatMessage message, String direction) =>
+      chatExec(
+        'INSERT OR REPLACE INTO messages '
+        '(id, conversation_id, sender, sender_alias, kind, body, file_path, '
+        ' file_size, preview, forwarded_from, created_at, status, direction, progress) '
+        'VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ""), ?, NULLIF(?, ""), NULLIF(?, ""), ?, ?, ?, ?)',
+        <Variable>[
+          Variable<String>(message.id),
+          Variable<String>(message.conversationId),
+          Variable<String>(message.sender),
+          Variable<String>(message.senderAlias),
+          Variable<String>(chatKindName(message.kind)),
+          Variable<String>(message.body),
+          Variable<String>(message.filePath ?? ''),
+          Variable<int>(message.fileSize ?? 0),
+          Variable<String>(message.preview ?? ''),
+          Variable<String>(message.forwardedFrom ?? ''),
+          Variable<int>(message.createdAt),
+          Variable<String>(chatStatusName(message.status)),
+          Variable<String>(direction),
+          const Variable<double>(0),
+        ],
+      );
+
+  Future<void> patchChatMessage(
+    String id, {
+    String? status,
+    String? filePath,
+    double? progress,
+    String? forwardedFrom,
+  }) async {
+    final sets = <String>[];
+    final args = <Variable>[];
+    void add(String column, Variable value) {
+      sets.add('$column = ?');
+      args.add(value);
+    }
+
+    if (status != null) add('status', Variable<String>(status));
+    if (filePath != null) add('file_path', Variable<String>(filePath));
+    if (progress != null) add('progress', Variable<double>(progress));
+    if (forwardedFrom != null) {
+      add('forwarded_from', Variable<String>(forwardedFrom));
+    }
+    if (sets.isEmpty) return;
+    args.add(Variable<String>(id));
+    await chatExec(
+      'UPDATE messages SET ${sets.join(", ")} WHERE id = ?',
+      args,
+    );
+  }
+
+  Future<void> deleteChatMessage(String id) => chatExec(
+        'DELETE FROM messages WHERE id = ?',
+        <Variable>[Variable<String>(id)],
+      );
+
+  Future<void> clearChatConversation(String id) async {
+    await chatExec(
+      'DELETE FROM messages WHERE conversation_id = ?',
+      <Variable>[Variable<String>(id)],
+    );
+    await chatExec(
+      'DELETE FROM conversations WHERE id = ?',
+      <Variable>[Variable<String>(id)],
+    );
+  }
+
+  Future<bool> isChatTrusted(String fingerprint) async {
+    final rows = await chatQuery(
+      'SELECT fingerprint FROM trusted_peers WHERE fingerprint = ?',
+      <Variable>[Variable<String>(fingerprint.toUpperCase())],
+    );
+    return rows.isNotEmpty;
+  }
+
+  Future<void> trustChatPeer(String fingerprint) => chatExec(
+        'INSERT OR IGNORE INTO trusted_peers (fingerprint, trusted_at) VALUES (?, ?)',
+        <Variable>[
+          Variable<String>(fingerprint.toUpperCase()),
+          Variable<int>(DateTime.now().millisecondsSinceEpoch),
+        ],
+      );
+
+  Future<void> revokeChatTrust(String fingerprint) => chatExec(
+        'DELETE FROM trusted_peers WHERE fingerprint = ?',
+        <Variable>[Variable<String>(fingerprint.toUpperCase())],
+      );
+
+  Future<void> enqueueChatOutbox(String target, String payload, String id) =>
+      chatExec(
+        'INSERT OR REPLACE INTO outbox (id, payload, target, created_at) VALUES (?, ?, ?, ?)',
+        <Variable>[
+          Variable<String>(id),
+          Variable<String>(payload),
+          Variable<String>(target.toUpperCase()),
+          Variable<int>(DateTime.now().millisecondsSinceEpoch),
+        ],
+      );
+
+  Future<List<Map<String, dynamic>>> listChatOutbox() => chatQuery(
+        'SELECT * FROM outbox ORDER BY created_at ASC',
+        <Variable>[],
+      );
+
+  Future<void> removeChatOutbox(String id) => chatExec(
+        'DELETE FROM outbox WHERE id = ?',
+        <Variable>[Variable<String>(id)],
+      );
+
+  Future<void> bumpChatOutbox(String id, String error) => chatExec(
+        'UPDATE outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?',
+        <Variable>[Variable<String>(error), Variable<String>(id)],
+      );
 }
 
 LazyDatabase _openConnection() {
@@ -107,3 +287,24 @@ LazyDatabase _openConnection() {
     return NativeDatabase.createInBackground(file);
   });
 }
+
+/// 与桌面 `db.rs` migration v4 保持一致。只新增表，tasks / pending_ops 一行不动。
+const List<String> chatTableDdl = <String>[
+  'CREATE TABLE IF NOT EXISTS conversations ('
+      'id TEXT PRIMARY KEY NOT NULL, alias TEXT NOT NULL, '
+      'last_message_at INTEGER NOT NULL DEFAULT 0, '
+      'unread INTEGER NOT NULL DEFAULT 0, pinned INTEGER NOT NULL DEFAULT 0)',
+  'CREATE INDEX IF NOT EXISTS idx_conversations_recent ON conversations(last_message_at DESC)',
+  'CREATE TABLE IF NOT EXISTS messages ('
+      'id TEXT PRIMARY KEY NOT NULL, conversation_id TEXT NOT NULL, '
+      'sender TEXT NOT NULL, sender_alias TEXT NOT NULL, kind TEXT NOT NULL, '
+      'body TEXT NOT NULL, file_path TEXT, file_size INTEGER, preview TEXT, '
+      'forwarded_from TEXT, created_at INTEGER NOT NULL, status TEXT NOT NULL, '
+      'direction TEXT NOT NULL DEFAULT "receive", progress REAL NOT NULL DEFAULT 0)',
+  'CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at)',
+  'CREATE TABLE IF NOT EXISTS outbox ('
+      'id TEXT PRIMARY KEY NOT NULL, payload TEXT NOT NULL, target TEXT NOT NULL, '
+      'attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, created_at INTEGER NOT NULL)',
+  'CREATE TABLE IF NOT EXISTS trusted_peers ('
+      'fingerprint TEXT PRIMARY KEY NOT NULL, trusted_at INTEGER NOT NULL)',
+];

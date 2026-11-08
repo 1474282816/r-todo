@@ -27,7 +27,7 @@ class _FakeBackend implements TransferBackend {
   Future<void> start(TransferLaunchConfig config) async => this.config = config;
 
   @override
-  String devicesJson() => '{"schema_version":1,"type":"devices","devices":[]}';
+  String devicesJson() => '{"schema_version":2,"type":"devices","devices":[]}';
 
   @override
   Future<void> refresh() async {}
@@ -187,7 +187,7 @@ void main() {
     expect(controller.lastError, isNull);
   });
 
-  test('发送失败：错误码转中文并清理 cache、停前台服务', () async {
+  test('发送失败：错误码转中文并清理 cache、前台服务保持常驻', () async {
     platform.picked = const [StagedFile(path: '/cache/outbox/a', name: 'a', size: 1)];
     await controller.start();
     backend.sendError = StateError('boom');
@@ -196,7 +196,8 @@ void main() {
 
     expect(controller.lastError, contains('操作失败'));
     expect(platform.cleaned, ['/cache/outbox/a']);
-    expect(platform.calls, contains('foreground-stop'));
+    // 常驻前台服务：出错也不停止，只把通知恢复成常驻文案。
+    expect(platform.calls, isNot(contains('foreground-stop')));
   });
 
   test('PIN_REQUIRED：保留暂存文件，供用户输入 PIN 后重试', () async {

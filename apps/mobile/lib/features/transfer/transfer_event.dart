@@ -1,7 +1,9 @@
 import 'dart:convert';
 
-/// 与 `crates/transfer-core` 的 `SCHEMA_VERSION` 对齐。
-const int transferSchemaVersion = 1;
+import '../chat/chat_message.dart';
+
+/// 与 `crates/transfer-core` 的 `SCHEMA_VERSION` 对齐（契约 v2）。
+const int transferSchemaVersion = 2;
 
 enum TransferDirection { send, receive }
 
@@ -65,6 +67,7 @@ class TransferFile {
     required this.size,
     this.fileType,
     this.sha256,
+    this.preview,
   });
 
   final String id;
@@ -72,6 +75,15 @@ class TransferFile {
   final int size;
   final String? fileType;
   final String? sha256;
+  /// 图片缩略图（FileDto.preview），接收确认前即可预览。
+  final String? preview;
+}
+
+/// 自定义消息端点送来的会话消息（文本 / 图片元数据 / 信任回执）。
+class TransferMessage extends TransferEvent {
+  const TransferMessage(super.schemaVersion, this.message);
+
+  final ChatMessage message;
 }
 
 /// 平台无关事件。字段语义与 Rust `TransferEvent` 一一对应。
@@ -225,6 +237,11 @@ TransferEvent? parseTransferEvent(String raw) {
         sessionId: _string(map['session_id'], 'session_id'),
         reason: _reason(map['reason']),
       );
+    case 'message':
+      return TransferMessage(
+        transferSchemaVersion,
+        ChatMessage.fromJson(_map(map['message'], 'message')),
+      );
     default:
       return null;
   }
@@ -266,6 +283,7 @@ TransferFile _parseFile(Object? value) {
     size: _int(map['size'], 'size'),
     fileType: _optionalString(map['file_type']),
     sha256: _optionalString(map['sha256']),
+    preview: _optionalString(map['preview']),
   );
 }
 

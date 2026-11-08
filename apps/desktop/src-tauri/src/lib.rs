@@ -196,6 +196,13 @@ pub fn run() {
             transfer::transfer_pending,
             transfer::transfer_reject,
             transfer::transfer_cancel,
+            transfer::chat_send_text,
+            transfer::chat_send_files,
+            transfer::chat_delete_file,
+            transfer::chat_read_file_bytes,
+            transfer::chat_flash_window,
+            transfer::chat_copy_file,
+            transfer::chat_file_exists,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

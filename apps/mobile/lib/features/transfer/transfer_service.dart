@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../src/rust/api/transfer.dart' as rust;
+import '../chat/chat_event_bus.dart';
 import 'transfer_error_text.dart';
 import 'transfer_event.dart';
 import 'transfer_favorites.dart';
@@ -412,6 +413,11 @@ class TransferController extends ChangeNotifier {
       _sub = _backend.events.listen(_onEvent);
       _applyDevicesSnapshot();
       runtime = TransferRuntime.running;
+      // 会话式互传：开关打开期间常驻前台服务，后台也能收消息（Q30/Q38）。
+      await _platform.startForeground(
+        title: 'r-todo 互传',
+        text: '正在监听消息（划掉 App 后不再接收）',
+      );
     } catch (error) {
       runtime = TransferRuntime.stopped;
       lastError = _friendlyError(error);
@@ -525,7 +531,8 @@ class TransferController extends ChangeNotifier {
           _stagedFiles.remove(path);
         }
       }
-      await _platform.stopForeground();
+      // 常驻模式：只把通知恢复成常驻文案，不停止服务。
+      await _maybeStopForeground();
     }
     notifyListeners();
   }
@@ -576,7 +583,7 @@ class TransferController extends ChangeNotifier {
       }
     } catch (error) {
       lastError = _friendlyError(error);
-      await _platform.stopForeground();
+      await _maybeStopForeground();
     }
     notifyListeners();
   }
@@ -623,6 +630,8 @@ class TransferController extends ChangeNotifier {
   }
 
   Future<void> _onEvent(TransferEvent event) async {
+    // FRB 事件流只有一个订阅者，聊天层通过广播总线复用。
+    ChatEventBus.instance.add(event);
     switch (event) {
       case TransferDevices(:final devices):
         this.devices = devices;
@@ -707,6 +716,9 @@ class TransferController extends ChangeNotifier {
               .toList(growable: false);
         }
         await _maybeStopForeground();
+      case TransferMessage():
+        // 会话消息由 ChatController 经 ChatEventBus 处理，这里不改传输态。
+        break;
     }
     notifyListeners();
   }
@@ -808,10 +820,37 @@ class TransferController extends ChangeNotifier {
         .toList(growable: false);
   }
 
+  /// 常驻模式下空闲时只把通知恢复成常驻文案，不停止前台服务；
+  /// 只有 stop()/退出才会真正 stopForeground。
   Future<void> _maybeStopForeground() async {
     final busy = tasks.any((task) => !task.done) || incoming.isNotEmpty;
-    if (!busy) await _platform.stopForeground();
+    if (!busy) {
+      await _platform.startForeground(
+        title: 'r-todo 互传',
+        text: '正在监听消息（划掉 App 后不再接收）',
+      );
+    }
   }
+
+  /// 会话消息到达时更新常驻通知，直接显示发送方与正文（Q45）。
+  Future<void> showChatNotification(String title, String text) =>
+      _platform.startForeground(title: title, text: text);
+
+  /// 会话层直接发送已暂存的文件路径（发文件 / 转发用，不再弹文件选择器）。
+  Future<void> sendPaths(String fingerprint, List<String> paths) async {
+    if (paths.isEmpty) return;
+    try {
+      await _backend.send(paths, fingerprint, settings.pin);
+      lastError = null;
+    } catch (error) {
+      lastError = _friendlyError(error);
+      await _maybeStopForeground();
+    }
+    notifyListeners();
+  }
+
+  /// 证书目录：会话层用它构造 mTLS 客户端（Q7）。
+  Future<String> identityDirectory() => _identityDir();
 
   Future<void> _releaseResources() async {
     try {

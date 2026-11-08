@@ -59,5 +59,53 @@ CREATE INDEX IF NOT EXISTS idx_pending_ops_fifo ON pending_ops(id);
 "#,
             kind: MigrationKind::Up,
         },
+        // 会话式互传：只新增表，tasks / pending_ops 一行不动（Q40/Q44）。
+        Migration {
+            version: 4,
+            description: "create_chat_tables",
+            sql: r#"
+CREATE TABLE IF NOT EXISTS conversations (
+    id TEXT PRIMARY KEY NOT NULL,
+    alias TEXT NOT NULL,
+    last_message_at INTEGER NOT NULL DEFAULT 0,
+    unread INTEGER NOT NULL DEFAULT 0,
+    pinned INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_conversations_recent ON conversations(last_message_at DESC);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id TEXT PRIMARY KEY NOT NULL,
+    conversation_id TEXT NOT NULL,
+    sender TEXT NOT NULL,
+    sender_alias TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    body TEXT NOT NULL,
+    file_path TEXT,
+    file_size INTEGER,
+    preview TEXT,
+    forwarded_from TEXT,
+    created_at INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    direction TEXT NOT NULL DEFAULT 'receive',
+    progress REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at);
+
+CREATE TABLE IF NOT EXISTS outbox (
+    id TEXT PRIMARY KEY NOT NULL,
+    payload TEXT NOT NULL,
+    target TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS trusted_peers (
+    fingerprint TEXT PRIMARY KEY NOT NULL,
+    trusted_at INTEGER NOT NULL
+);
+"#,
+            kind: MigrationKind::Up,
+        },
     ]
 }

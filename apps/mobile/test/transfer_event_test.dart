@@ -1,13 +1,14 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:r_todo_mobile/features/chat/chat_message.dart';
 import 'package:r_todo_mobile/features/transfer/transfer_event.dart';
 
 void main() {
   group('parseTransferEvent', () {
     test('解析 progress 事件', () {
       final event = parseTransferEvent(jsonEncode({
-        'schema_version': 1,
+        'schema_version': 2,
         'type': 'progress',
         'session_id': 's1',
         'file_id': 'f1',
@@ -19,7 +20,7 @@ void main() {
 
       expect(event, isA<TransferProgress>());
       final progress = event as TransferProgress;
-      expect(progress.schemaVersion, 1);
+      expect(progress.schemaVersion, 2);
       expect(progress.sessionId, 's1');
       expect(progress.fileId, 'f1');
       expect(progress.direction, TransferDirection.send);
@@ -30,7 +31,7 @@ void main() {
 
     test('解析 incoming 事件（可选字段缺省）', () {
       final event = parseTransferEvent(jsonEncode({
-        'schema_version': 1,
+        'schema_version': 2,
         'type': 'incoming',
         'session_id': 's2',
         'ip': '192.168.1.9',
@@ -61,7 +62,7 @@ void main() {
 
     test('解析 devices 事件（channels / protocol）', () {
       final event = parseTransferEvent(jsonEncode({
-        'schema_version': 1,
+        'schema_version': 2,
         'type': 'devices',
         'devices': [
           {
@@ -91,7 +92,7 @@ void main() {
 
     test('解析 completed 事件', () {
       final event = parseTransferEvent(jsonEncode({
-        'schema_version': 1,
+        'schema_version': 2,
         'type': 'completed',
         'session_id': 's4',
         'file_id': 'f4',
@@ -107,7 +108,7 @@ void main() {
 
     test('解析 error 事件（错误码原样保留）', () {
       final event = parseTransferEvent(jsonEncode({
-        'schema_version': 1,
+        'schema_version': 2,
         'type': 'error',
         'scope': 'receive',
         'code': 'PIN_INVALID',
@@ -123,7 +124,7 @@ void main() {
 
     test('解析 session_ended 事件', () {
       final event = parseTransferEvent(jsonEncode({
-        'schema_version': 1,
+        'schema_version': 2,
         'type': 'session_ended',
         'session_id': 's3',
         'reason': 'completed',
@@ -136,7 +137,7 @@ void main() {
 
     test('未知事件类型返回 null（前向兼容）', () {
       final event = parseTransferEvent(jsonEncode({
-        'schema_version': 1,
+        'schema_version': 2,
         'type': 'something_new',
       }));
       expect(event, isNull);
@@ -145,11 +146,33 @@ void main() {
     test('schema_version 不匹配抛 FormatException', () {
       expect(
         () => parseTransferEvent(jsonEncode({
-          'schema_version': 2,
+          'schema_version': 3,
           'type': 'progress',
         })),
         throwsFormatException,
       );
+    });
+
+    test('message 事件解析出 ChatMessage', () {
+      final event = parseTransferEvent(jsonEncode({
+        'schema_version': 2,
+        'type': 'message',
+        'message': {
+          'id': 'm1',
+          'conversation_id': 'PEER',
+          'sender': 'PEER',
+          'sender_alias': '手机',
+          'kind': 'text',
+          'body': '你好',
+          'created_at': 1700000000000,
+          'status': 'sent',
+        },
+      }));
+      expect(event, isA<TransferMessage>());
+      final message = (event! as TransferMessage).message;
+      expect(message.body, '你好');
+      expect(message.kind, ChatMessageKind.text);
+      expect(message.conversationId, 'PEER');
     });
 
     test('非法 JSON 抛 FormatException', () {
