@@ -1,5 +1,50 @@
 # 改动日志
 
+## 2026-11-08 · 桌面端局域网互传（LocalSend 兼容）
+
+### 背景
+
+给桌面端加局域网文件互传，与官方 LocalSend、后续手机端 r-todo 互通。协议/传输逻辑
+复用 LocalSend 官方 Rust core，不重新实现；UI 沿用 r-todo 现有风格。
+
+### 改动
+
+- `crates/vendor/localsend-core`（新）：上游 `packages/core` 原样 vendor
+  （rev `58955fd`，Apache-2.0，未改代码，含 `LICENSE` + `VENDORED.md`）。
+  原因是上游带 Flutter 子模块，cargo 的 git 依赖会递归 fetch 子模块必然失败。
+- `crates/transfer-core`（实现）：身份持久化（自签证书 + fingerprint）、组播/手动 IP 发现、
+  发送（register → prepare-upload → upload）、接收（人工确认 + `.part` 落盘 + 重名处理）、
+  进度节流、取消/拒绝、错误码映射；新增 `identity_dir` / `verify_checksums` 配置字段。
+- `crates/transfer-core/tests/loopback.rs`（新）：两个实例 HTTPS 真实互传一个文件的集成测试。
+- `apps/desktop/src-tauri/src/transfer/`（新）：设置持久化（`transfer-config.json`）、
+  14 个 `transfer_*` command、core 事件 → `transfer-*` Tauri 事件桥、独立窗口、
+  托盘「打开互传」、退出时停服等端口释放。
+- 前端：`src/lib/transfer.ts` + `src/features/transfer/*`（窗口/设备列表/发送/接收确认/进度/设置）；
+  `main.tsx` 增加 `?view=transfer`；主窗口顶部加「互传」按钮；设置面板加「局域网互传」开关。
+- `capabilities/default.json` 的 `windows` 增加 `"transfer"`。
+
+### 实现期间修复
+
+- Windows 端口落在 Hyper-V/WSL 排除段时组播整体失败 → 错误提示改为“端口可能被系统保留，
+  换端口或用手动 IP”（`netsh int ipv4 show excludedportrange protocol=udp` 可查）。
+- 互传窗口关闭期间错过 `Incoming` 事件会导致发送方一直等 → 新增 `transfer_pending`，
+  窗口重开时恢复接收弹窗。
+- 收到文件请求时若互传窗口未打开，事件桥自动开窗并延迟补发一次事件。
+- 窗口在后台时，接收完成发系统通知。
+- PIN / 拒绝 / 对端忙 / 校验失败的错误文案改为中文，不再透出 `HTTP 403`。
+- 端口 0（系统分配）时发现/发送使用真实端口；退出时 discovery/server 各加 2s 超时。
+- 发送面板补「对方 PIN」输入框（可选），协议层两条路径已加回环测试覆盖。
+- 修复接收中途取消无效：原来只清会话槽，body 继续写、文件照样完整落盘。现在会停进度、
+  反向给发送方发协议级 cancel、删除 `.part` 并丢弃半成品（新增回归测试）。
+- 离线设备报错改为中文提示，并自动从设备列表移除。
+- 新增调试工具：`crates/transfer-core/examples/{multicast_probe,send,serve}.rs`。
+
+### 已知限制
+
+- 真机互通（官方 LocalSend 双向、真实组播、防火墙、睡眠唤醒、1GB+）待用户验收。
+- 收藏设备自动接受暂未开放；`auto_accept_favorites` 只持久化不生效。
+- LocalSend v2 服务端单会话，多设备同时发送时后到者会失败。
+
 ## 2026-09-14 · MCP 服务器（AI 操作待办）
 
 ### 背景

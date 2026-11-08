@@ -460,3 +460,168 @@ git worktree add .worktrees/mobile  -b feat/mobile-transfer
 cd crates/transfer-core
 cargo test
 ```
+
+---
+
+## 13. 实现记录（2026-11-08，desktop agent）
+
+### 13.1 状态
+
+Phase 0 / 1 / 2 / 3 已完成并在本机编译 + 单测通过；Phase 4（真机互通验收）未做，
+需要用户用官方 LocalSend 与真机跑一遍 §9 清单。
+
+验证命令与结果：
+
+| 命令 | 结果 |
+|---|---|
+| `cd crates/transfer-core && cargo test` | ✅ 17 个测试通过（含 4 个真实 HTTPS 回环互传：普通/自定义落盘路径/PIN/中途取消） |
+| `cd apps/desktop/src-tauri && cargo check` | ✅ 通过 |
+| `cd apps/desktop/src-tauri && cargo test --lib` | ✅ 26 个测试通过（含事件映射/设置读写） |
+| `pnpm --filter desktop build` | ✅ tsc + vite 通过 |
+
+### 13.2 与本文档的差异（需要同步给手机端）
+
+1. **LocalSend core 不用 git 依赖，改为 vendored 源码**
+   - 原因：上游带 `support/submodules/flutter` 子模块，cargo 解析 git 依赖会递归 fetch，
+     必然失败；`[patch]` 也无法绕过。详见 `docs/handoff/notes/desktop-transfer-spike.md`。
+   - 位置：`crates/vendor/localsend-core`，rev `58955fd54ef1e18e89ec30e60f46754084a80942`，
+     未改一行代码，保留 `LICENSE`，来源见 `VENDORED.md`。
+   - 手机端 path 依赖 `crates/transfer-core` 即可，不需要关心这层。
+2. **`TransferConfig` 新增两个字段**（均 `serde(default)`，向后兼容）：
+   - `identity_dir: PathBuf`：证书/私钥目录。桌面端 `app_data_dir/transfer`；手机端传 App 私有目录。
+     空则退化到系统临时目录（身份每次重建）。
+   - `verify_checksums: bool`：默认 `true`。
+   - 事件结构与错误码**未改**，`SCHEMA_VERSION` 仍为 1。
+3. **`transfer_get_state` 额外带了 `settings`**（本文档 §5.1 已写），实际返回
+   `{running, port, alias, fingerprint, settings, error}`，`settings` 为 camelCase。
+4. **托盘菜单只加了「打开互传」**，没有单独的「发送文件」项：发送需要文件选择器，
+   走窗口内选择/拖拽更稳，避免在 Rust 里再拉一次 dialog。
+5. **收藏设备自动接受未实现**：`auto_accept_favorites` 字段保留并持久化，但没有收藏列表，
+   当前所有接收都走人工确认（默认安全）。
+6. **`respond_file` 的 `savePath` 可选**：不传就用接收目录 + 核心生成的安全文件名；
+   传了则记录到会话里，等该文件的上传请求到达时使用。
+
+### 13.3 代码结构
+
+```text
+crates/transfer-core/
+  src/lib.rs          # 导出契约
+  src/config.rs       # TransferConfig（新增 identity_dir / verify_checksums）
+  src/identity.rs     # 自签证书 + fingerprint 持久化
+  src/discovery.rs    # 组播/手动 IP/子网扫描，DiscoveredDevice → DeviceInfo
+  src/server.rs       # start_with_port + TlsConfig + 端口占用/防火墙错误映射
+  src/client.rs       # register → prepare-upload → upload → cancel、错误码映射
+  src/path.rs         # 文件名清洗、重名加序号、.part 临时文件
+  src/service.rs      # 会话状态机、事件循环、进度节流、取消/拒绝
+  src/event.rs        # 事件信封 + EventSender
+  tests/contract.rs   # JSON 形状冻结
+  tests/loopback.rs   # 两实例真实 HTTPS 互传
+
+apps/desktop/src-tauri/src/transfer/
+  mod.rs              # 设置持久化、Tauri 状态、commands、窗口、退出清理
+  events.rs           # core 事件 → transfer-* 事件名/payload
+
+apps/desktop/src/
+  lib/transfer.ts                        # invoke 封装 + 事件订阅 + 类型
+  features/transfer/TransferWindow.tsx   # 窗口：服务开关/发送/设备/设置
+  features/transfer/DeviceList.tsx
+  features/transfer/SendPanel.tsx
+  features/transfer/ReceiveDialog.tsx
+  features/transfer/TransferProgress.tsx
+  features/transfer/useTransfer.ts       # 状态与事件归约
+```
+
+入口：主窗口顶部「互传」按钮、设置面板「局域网互传」开关、托盘「打开互传」、
+`?view=transfer` 路由。窗口标题「互传 · r-todo」，760×560，有系统边框。
+
+### 13.4 已知限制 / 未完成
+
+- **真机互通未验证**：官方 LocalSend（Windows/Android）双向、真实组播、防火墙弹窗、
+  睡眠唤醒后 socket 失效、1GB+、中文/重名/多文件，需要用户实机跑 §9。
+- 组播在 Windows 多网卡/虚拟网卡环境不稳定；已提供手动 IP 兜底，网卡白/黑名单设置未做。
+- v2 服务端单会话：多设备同时发送时后到者会收到 409（UI 显示为未知错误 + 消息）。
+- 发送侧进度事件不带文件名（契约限制），UI 按选择顺序补位显示。
+- 接收文件落盘用 `.part` + rename；显式指定已存在路径时会覆盖（保存对话框已确认过）。
+- 应用退出用 `RunEvent::Exit` + 3s 超时停服，等待端口释放；异常退出由 OS 回收。
+- `apps/desktop/src-tauri/vendor/` 已重新生成（699 包）以包含 localsend 的新依赖；
+  该目录 gitignore，不进仓库。
+
+---
+
+## 14. 运行态验收记录（2026-11-08 深夜，自动化）
+
+用独立 identifier（`dev.rtodo.desktop.smoke`，端口 53318，接收目录 `E:\r-todo\tmp\transfer-inbox`）
+跑真实 app 二进制，通过 WebView2 CDP 驱动，配两个命令行工具（`examples/send.rs`、`examples/serve.rs`）
+做双向验收。**没有碰用户的正式配置目录与 D:\ 上正在运行的实例。**
+
+### 14.1 已验证（有证据）
+
+| 项 | 结果 |
+|---|---|
+| 设置 `enabled=true` → 启动自动开服务 | ✅ 进程起来后 TCP 53318 监听 |
+| `transfer_get_state` | ✅ `{running, port, alias, fingerprint, settings{...}, error}` |
+| 互传窗口 UI 渲染 | ✅ 截图 + DOM：标题/端口/设备列表/选择文件/错误条都在（暗色） |
+| `transfer_add_manual_ip` 跨进程发现 | ✅ 返回对端 `r-todo peer` + fingerprint + `https` channel |
+| app 发送 → 对端接收 | ✅ 1.5 MB 文件 SHA-256 完全一致，对端 `ENDED=Completed` |
+| 对端发送 → app 接收 | ✅ `transfer_pending` 列出请求 → `transfer_respond_prepare` → 落盘 SHA-256 一致 |
+| `transfer_reject` | ✅ 对端收到 403 → `REJECTED` |
+| 接收中途取消 | ✅ 3 GB 传到 23% 取消：进度立即停、对端 `会话结束: 已取消`、接收目录无残留 |
+| 关窗恢复 | ✅ 关闭互传窗口后重开，接收弹窗仍在（`transfer_pending`） |
+| 收到请求自动开窗 | ✅ 窗口关闭状态下发文件，互传窗口自动弹出 |
+| `transfer_stop` / `transfer_start` | ✅ 停止后端口释放，再次启动端口/身份不变 |
+| 组播 | ✅ 端口 53318 正常（`multicast_probe` 验证） |
+
+### 14.2 踩到的坑（已修）
+
+1. **Windows 端口排除段会让组播整体失败**：`53999` 落在 Hyper-V/WSL 的 UDP 排除范围
+   （`netsh int ipv4 show excludedportrange protocol=udp` → 53976–54075），
+   `multicast::start` 返回 `No network interface available for multicast`。
+   已把三条错误提示改成明确的“端口可能被系统保留/被占用，请换端口或用手动 IP”：
+   - `MULTICAST_UNAVAILABLE`（service.rs）
+   - `PORT_IN_USE` / `FIREWALL`（server.rs）
+2. **窗口重开后接收弹窗丢失**：`Incoming` 事件只在当次窗口生命周期内有效，关掉窗口后发送方
+   会一直等。新增 `transfer_pending` 命令 + 前端挂载时补拉，恢复弹窗。
+3. **收到请求时互传窗口没开**：事件桥里加“自动开窗 + 延迟补发一次事件”（新窗口 JS 还没来得及订阅）。
+4. **接收完成通知**：窗口在后台时发系统通知（`@tauri-apps/plugin-notification`）。
+5. 错误文案本地化：PIN/拒绝/对端忙/校验失败给中文提示，不再直接透出 `HTTP 403`。
+6. 端口 0（系统分配）时 `refresh`/`send` 用的是真实端口而不是配置端口。
+7. `stop()` 里 discovery / server 各加 2s 超时，避免退出被卡住。
+8. **接收中途取消无效**（真机测试发现）：`ServerHandle::cancel_v2_session` 只是把会话槽置空，
+   既不会中止正在写入的 body，也不会通知发送方；结果进度继续涨、文件照样完整落盘。
+   现在取消会：标记会话 → 停进度上报 → 清未回复的上传请求 → **反向给发送方发协议级
+   `cancel`** → 删除 `.part` 并在落盘任务收尾时丢弃半成品（不再上报完成）。
+   回归测试：`loopback_receiver_cancel_discards_file`（64 MB 中途取消，断言无残留）。
+9. 设备离线时的报错原来是 `Send/Unknown: error sending request for url (...)`：
+   现改为“连不上该设备：可能已离线或端口不对…”，并自动把该设备从列表摘掉
+   （已离线设备常见于对端刚退出）。
+
+### 14.3 关于“异步命令创建窗口”
+
+排查过程中一度怀疑 async command 创建的窗口不出现，最后用同一份代码路径的
+`open_month_window` 复现了同样现象：**当前会话处于锁屏状态时，新建窗口的 HWND 不会
+真正落地**（`hwnd Unavailable` / `FailedToReceiveMessage`），与我们的实现无关。
+`open_transfer_window` 保持与 `open_month_window` 完全一致的写法（async + 单例），
+在正常解锁的桌面上可用（首次 CDP 验收时窗口确实出现了）。
+
+### 14.4 新增的工具（可复用）
+
+```powershell
+cd crates/transfer-core
+# 主动发现问题（列网卡组播能力）
+cargo run --example multicast_probe -- 53317
+
+# 向某个对端发文件（用于验收对方的接收 UI / 排查发现不到）
+cargo run --example send -- 127.0.0.1 53317 .\a.pdf
+
+# 起一个自动接收的对端（用于验收本端“发送”链路）
+cargo run --example serve -- E:\tmp\inbox 53319
+```
+
+### 14.5 仍需真机确认（无法自动化）
+
+- 官方 LocalSend（Windows/Android）双向互通、真实组播、防火墙首次弹窗
+- 带 PIN 的对端实测（协议层已用回环测试覆盖 `PIN_REQUIRED` / 正确 PIN 两条路径；
+  发送面板已提供“对方 PIN”输入框，但真实设备上的输入体验待确认）
+- 1 GB+ 文件、睡眠唤醒后 socket 失效
+- 解锁桌面后人工点一次「互传」按钮、托盘「打开互传」、接收弹窗的实际观感
+- 多网卡（WLAN + ZeroTier + Tailscale + WSL）下实际选中的网卡是否符合预期

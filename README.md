@@ -66,12 +66,25 @@ pnpm dev:mobile
 - 安全：开关默认关；token 在设置面板可重置；端口仅监听 127.0.0.1
 - opencode / codex 的配置模板已按官方格式内置，但未经真机验证（本机未安装）；如报 schema 错误，请按官方文档格式手动调整后反馈
 
+## 局域网互传（LocalSend 兼容）
+
+桌面端内置局域网文件互传（**默认关闭**，与待办同步互不影响）：
+
+- 入口：主窗口右上「互传」按钮 / 设置 →「局域网互传」/ 托盘「打开互传」
+- 协议：LocalSend **HTTP(S) v2**，端口 **53317**，HTTPS 自签证书 + fingerprint 固定
+- 发现：UDP 组播 + 手动 IP（多网卡/虚拟网卡发现不到时用手动 IP）
+- 可与官方 LocalSend（Windows / Android）及其他 r-todo 设备双向互传
+- 接收前**必须人工确认**；默认保存到 `下载/r-todo`（可在互传窗口修改），重名自动加序号
+- 协议实现复用 LocalSend 官方 Rust core：`crates/vendor/localsend-core`（Apache-2.0，pin rev）
+
 ## 文档
 
 - [需求文档 v1.0](docs/requirements.md)
 - [技术栈说明](docs/tech-stack.md)
 - [架构决策记录 (ADR)](docs/decisions/)
+- [互传 handoff（桌面）](docs/handoff/2026-11-08-desktop-transfer.md)
+- [互传 handoff（手机）](docs/handoff/2026-11-08-mobile-transfer.md)
 
 ## 状态
 
-🚧 骨架搭建完成，业务代码待实现。
+🚧 待办（桌面/手机/同步）+ 桌面互传 MVP 已实现；互传真机互通待验收。
