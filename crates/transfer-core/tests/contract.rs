@@ -1,7 +1,7 @@
 use rtodo_transfer_core::{
     DeviceChannel, DeviceInfo, DeviceSummary, Direction, ErrorCode, ErrorScope, EventEnvelope,
-    FileInfo, Protocol, SessionEndReason, TransferConfig, TransferError, TransferEvent,
-    TransferService, DEFAULT_PORT, SCHEMA_VERSION,
+    FileInfo, Protocol, SessionEndReason, TransferConfig, TransferEvent, TransferService,
+    DEFAULT_PORT, SCHEMA_VERSION,
 };
 
 #[test]
@@ -127,21 +127,35 @@ fn config_defaults_to_localsend_port() {
 }
 
 #[tokio::test]
-async fn skeleton_service_starts_and_reports_not_implemented() {
-    let (tx, _rx) = tokio::sync::mpsc::channel(4);
-    let service = TransferService::start(TransferConfig::default(), tx)
+async fn service_starts_and_stops_on_free_port() {
+    let (tx, _rx) = tokio::sync::mpsc::channel(64);
+
+    let dir = std::env::temp_dir().join(format!("rtodo_transfer_contract_{}", std::process::id()));
+    let config = TransferConfig {
+        port: 0,
+        identity_dir: dir.clone(),
+        receive_dir: dir.join("inbox"),
+        ..TransferConfig::default()
+    };
+
+    let service = TransferService::start(config, tx)
         .await
-        .expect("skeleton start");
+        .expect("service start");
 
-    assert!(service.devices().is_empty());
+    assert_eq!(service.fingerprint().len(), 64, "fingerprint 是大写 hex 的 SHA-256");
+    assert!(service
+        .fingerprint()
+        .chars()
+        .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_lowercase()));
+    assert!(service.devices().await.is_empty());
 
+    // 没有目标设备时发送应明确失败，而不是 panic
     let err = service
         .send(Vec::new(), "FP", None)
         .await
-        .expect_err("skeleton send must be unimplemented");
-    assert!(matches!(err, TransferError::NotImplemented));
-    assert_eq!(err.code(), ErrorCode::Unknown);
-    assert_eq!(err.scope(), ErrorScope::Server);
+        .expect_err("empty send must fail");
+    assert_eq!(err.code(), ErrorCode::Io);
 
     service.stop().await.expect("stop");
+    let _ = std::fs::remove_dir_all(&dir);
 }
