@@ -296,6 +296,21 @@ pub async fn transfer_get_state(app: AppHandle) -> Result<TransferStateView, Str
 #[tauri::command]
 pub async fn transfer_start(app: AppHandle) -> Result<StartInfo, String> {
     let state = app.state::<SharedTransferState>().inner().clone();
+
+    // 已经在跑就直接返回当前状态：重复「启动」不应重启服务。
+    // 重启会作废服务端待确认的接收会话、清空设备表，也让对端认知里的本机闪断。
+    {
+        let guard = state.service.lock().await;
+        if let Some(service) = guard.as_ref() {
+            return Ok(StartInfo {
+                running: true,
+                port: service.port(),
+                alias: service.config().alias.clone(),
+                fingerprint: service.fingerprint().to_string(),
+            });
+        }
+    }
+
     let mut settings = load_settings(&settings_path(&app));
     settings.enabled = true;
     save_settings(&settings_path(&app), &settings)?;
@@ -326,6 +341,7 @@ pub async fn transfer_set_settings(
     let state = app.state::<SharedTransferState>().inner().clone();
 
     let mut settings = load_settings(&settings_path(&app));
+    let previous = settings.clone();
     if let Some(alias) = alias {
         let alias = alias.trim().to_string();
         if !alias.is_empty() {
@@ -350,8 +366,14 @@ pub async fn transfer_set_settings(
 
     save_settings(&settings_path(&app), &settings)?;
 
-    // 运行中改端口/别名/PIN 需要重启服务才生效
-    if settings.enabled && state.running().await {
+    // 只有监听相关字段（端口 / 别名 / PIN / 接收目录）变了才需要重启服务；
+    // 改「已确认设备自动接收」这类开关不该打断进行中的传输与待确认会话。
+    let needs_restart = previous.port != settings.port
+        || previous.alias != settings.alias
+        || previous.pin != settings.pin
+        || previous.receive_dir != settings.receive_dir;
+
+    if needs_restart && settings.enabled && state.running().await {
         spawn_service(&app, &state, &settings).await?;
     }
 

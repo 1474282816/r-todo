@@ -6,11 +6,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-import '../../data/database.dart';
 import '../transfer/transfer_event.dart';
 import '../transfer/transfer_service.dart';
 import 'chat_event_bus.dart';
 import 'chat_message.dart';
+import 'chat_store.dart';
 
 class ChatConversation {
   const ChatConversation({
@@ -92,9 +92,9 @@ class TrustPrompt {
 
 /// 会话式互传的状态与业务：消息收发、首次确认、转发、删除、通知、待发补投。
 class ChatController extends ChangeNotifier {
-  ChatController({required this.db, required this.transfer});
+  ChatController({required this.store, required this.transfer});
 
-  final AppDatabase db;
+  final ChatStore store;
   final TransferController transfer;
 
   static const MethodChannel _platform = MethodChannel('rtodo/chat');
@@ -118,7 +118,7 @@ class ChatController extends ChangeNotifier {
   Future<void> init() async {
     if (_started) return;
     _started = true;
-    await db.createChatTables();
+    await store.createChatTables();
     selfAlias = transfer.settings.alias;
     try {
       final dir = await transfer.identityDirectory();
@@ -141,6 +141,41 @@ class ChatController extends ChangeNotifier {
         // 服务未就绪时仍可浏览历史
       }
     }
+    notifyListeners();
+  }
+
+  /// 互传运行状态（手机端之前没有可见的开关/状态，这里补回来）。
+  bool get isRunning => transfer.isRunning;
+
+  TransferRuntime get runtime => transfer.runtime;
+
+  String? get lastError => transfer.lastError;
+
+  /// 手动启动互传服务。
+  Future<void> startService() async {
+    await transfer.start();
+    devices = transfer.devices;
+    notifyListeners();
+  }
+
+  /// 停止互传服务（会一并停掉常驻前台服务）。
+  Future<void> stopService() async {
+    await transfer.stop();
+    devices = const <TransferDevice>[];
+    notifyListeners();
+  }
+
+  /// 刷新附近设备。
+  ///
+  /// LocalSend 的发现是单向的：本机只有重新广播一次，对端才有机会发现我们。
+  /// core 的 refresh() 会做「announce 自己 + 宽限期内等回注册 + /24 兜底扫描」。
+  /// 服务没在跑时先把它拉起来（常驻前台服务也随之恢复），否则刷新没有意义。
+  Future<void> refreshDevices() async {
+    if (!transfer.isRunning) {
+      await transfer.start();
+    }
+    await transfer.refresh();
+    devices = transfer.devices;
     notifyListeners();
   }
 
@@ -199,7 +234,7 @@ class ChatController extends ChangeNotifier {
   }
 
   Future<void> refreshConversations() async {
-    final rows = await db.listChatConversations();
+    final rows = await store.listChatConversations();
     conversations = rows.map(ChatConversation.fromRow).toList(growable: false);
     notifyListeners();
   }
@@ -211,14 +246,14 @@ class ChatController extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final rows = await db.listChatMessages(id);
+    final rows = await store.listChatMessages(id);
     messages = rows.map(ChatEntry.fromRow).toList(growable: false);
     notifyListeners();
   }
 
   Future<void> openConversation(String id) async {
     activeId = id;
-    await db.markChatRead(id);
+    await store.markChatRead(id);
     await refreshMessages();
     await refreshConversations();
   }
@@ -281,10 +316,10 @@ class ChatController extends ChangeNotifier {
     await _store(message, 'send');
     try {
       await _post(message, id);
-      await db.patchChatMessage(message.id, status: 'sent');
+      await store.patchChatMessage(message.id, status: 'sent');
     } catch (error) {
-      await db.patchChatMessage(message.id, status: 'failed');
-      await db.enqueueChatOutbox(id, jsonEncode(message.toJson()), message.id);
+      await store.patchChatMessage(message.id, status: 'failed');
+      await store.enqueueChatOutbox(id, jsonEncode(message.toJson()), message.id);
       flash('对方不在线，消息已排队，恢复后自动补投');
     }
     await refreshMessages();
@@ -361,8 +396,8 @@ class ChatController extends ChangeNotifier {
   }
 
   Future<void> _store(ChatMessage message, String direction) async {
-    await db.insertChatMessage(message, direction);
-    await db.upsertChatConversation(
+    await store.insertChatMessage(message, direction);
+    await store.upsertChatConversation(
       message.conversationId,
       message.senderAlias,
       message.createdAt,
@@ -394,15 +429,15 @@ class ChatController extends ChangeNotifier {
 
   Future<void> _onMessage(ChatMessage message) async {
     if (message.kind == ChatMessageKind.trust) {
-      await db.trustChatPeer(message.sender);
+      await store.trustChatPeer(message.sender);
       flash('${message.senderAlias} 已信任本设备，后续文件免确认');
       return;
     }
     if (message.sender.isNotEmpty && message.sender == selfFingerprint) return;
     final peer = message.sender;
     final incoming = message.copyWith(conversationId: peer);
-    await db.insertChatMessage(incoming, 'receive');
-    await db.upsertChatConversation(
+    await store.insertChatMessage(incoming, 'receive');
+    await store.upsertChatConversation(
       peer,
       message.senderAlias,
       message.createdAt,
@@ -422,7 +457,7 @@ class ChatController extends ChangeNotifier {
 
   Future<void> _onIncoming(TransferIncoming event) async {
     final prompt = TrustPrompt(event);
-    final trusted = await db.isChatTrusted(prompt.fingerprint);
+    final trusted = await store.isChatTrusted(prompt.fingerprint);
     if (trusted) {
       await _accept(prompt, markTrusted: false);
     } else {
@@ -459,7 +494,7 @@ class ChatController extends ChangeNotifier {
     );
     if (request != null) await transfer.acceptIncoming(request);
     if (markTrusted) {
-      await db.trustChatPeer(prompt.fingerprint);
+      await store.trustChatPeer(prompt.fingerprint);
       await transfer.toggleFavorite(prompt.fingerprint);
       final ack = ChatMessage.create(
         conversationId: prompt.fingerprint,
@@ -488,20 +523,20 @@ class ChatController extends ChangeNotifier {
         preview: file.preview,
         status: ChatMessageStatus.pending,
       );
-      await db.insertChatMessage(message, 'receive');
+      await store.insertChatMessage(message, 'receive');
     }
-    await db.upsertChatConversation(
+    await store.upsertChatConversation(
         prompt.fingerprint, prompt.alias, DateTime.now().millisecondsSinceEpoch);
     await refreshConversations();
     await refreshMessages();
   }
 
   Future<void> _attachReceivedPath(String path) async {
-    final rows = await db.listChatMessages(activeId ?? '');
+    final rows = await store.listChatMessages(activeId ?? '');
     for (final row in rows.reversed) {
       if (row['direction'] == 'receive' &&
           (row['file_path'] == null || row['file_path'] == '')) {
-        await db.patchChatMessage(row['id'] as String,
+        await store.patchChatMessage(row['id'] as String,
             filePath: path, status: 'sent', progress: 100);
         break;
       }
@@ -512,7 +547,7 @@ class ChatController extends ChangeNotifier {
   // ─────────────────── 补投 / 转发 / 删除 / 菜单 ───────────────────
 
   Future<void> flushOutbox() async {
-    final rows = await db.listChatOutbox();
+    final rows = await store.listChatOutbox();
     for (final row in rows) {
       final attempts = (row['attempts'] as num?)?.toInt() ?? 0;
       final createdAt = (row['created_at'] as num?)?.toInt() ?? 0;
@@ -524,11 +559,11 @@ class ChatController extends ChangeNotifier {
         final message = ChatMessage.fromJson(
             jsonDecode(row['payload'] as String) as Map<String, dynamic>);
         await _post(message, row['target'] as String);
-        await db.removeChatOutbox(row['id'] as String);
-        await db.patchChatMessage(message.id, status: 'sent');
+        await store.removeChatOutbox(row['id'] as String);
+        await store.patchChatMessage(message.id, status: 'sent');
         await refreshMessages();
       } catch (error) {
-        await db.bumpChatOutbox(row['id'] as String, error.toString());
+        await store.bumpChatOutbox(row['id'] as String, error.toString());
       }
     }
   }
@@ -557,8 +592,8 @@ class ChatController extends ChangeNotifier {
       preview: message.preview,
       forwardedFrom: message.senderAlias,
     );
-    await db.insertChatMessage(forwarded, 'send');
-    await db.upsertChatConversation(
+    await store.insertChatMessage(forwarded, 'send');
+    await store.upsertChatConversation(
         target, alias, forwarded.createdAt);
     if (message.kind == ChatMessageKind.text) {
       try {
@@ -567,7 +602,7 @@ class ChatController extends ChangeNotifier {
         // 文本转发失败会留在下次补投（文件消息本身已走文件链路）
       }
     }
-    await db.patchChatMessage(message.id, forwardedFrom: alias);
+    await store.patchChatMessage(message.id, forwardedFrom: alias);
     await refreshConversations();
     await refreshMessages();
     flash('已转发给 $alias');
@@ -585,7 +620,7 @@ class ChatController extends ChangeNotifier {
         // 文件已不存在时同样只删记录
       }
     }
-    await db.deleteChatMessage(entry.message.id);
+    await store.deleteChatMessage(entry.message.id);
     await refreshMessages();
   }
 
@@ -603,14 +638,14 @@ class ChatController extends ChangeNotifier {
   }
 
   Future<void> clearHistory(String id) async {
-    await db.clearChatConversation(id);
+    await store.clearChatConversation(id);
     if (activeId == id) activeId = null;
     await refreshConversations();
     await refreshMessages();
   }
 
   Future<void> revokeTrust(String id) async {
-    await db.revokeChatTrust(id);
+    await store.revokeChatTrust(id);
     // 手机端首次确认同时写 favorites，撤销时两边都要清（Q36/Q29）。
     if (transfer.isFavorite(id)) await transfer.toggleFavorite(id);
     flash('已撤销信任，下次发文件会重新确认');

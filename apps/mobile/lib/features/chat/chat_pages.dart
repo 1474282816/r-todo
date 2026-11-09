@@ -24,7 +24,7 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
   void initState() {
     super.initState();
     controller = ChatController(
-      db: AppDatabase(),
+      store: AppDatabase(),
       transfer: ref.read(transferControllerProvider),
     );
     controller.addListener(_onChanged);
@@ -72,6 +72,24 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
         ListView(
           padding: const EdgeInsets.only(bottom: 16),
           children: [
+            _transferStatus(),
+            if (controller.isRunning && controller.devices.isEmpty)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 6),
+                child: Text(
+                  '还没发现附近设备：让对方在自己的互传里点一次「刷新」，'
+                  '并确认两台设备在同一个 Wi-Fi。',
+                  style: TextStyle(fontSize: 11, color: Colors.orange),
+                ),
+              ),
+            if (controller.lastError != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                child: Text(
+                  controller.lastError!,
+                  style: const TextStyle(fontSize: 11, color: Colors.red),
+                ),
+              ),
             if (controller.notice != null)
               Padding(
                 padding: const EdgeInsets.all(8),
@@ -135,6 +153,48 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
         ),
         if (prompt != null) _trustDialog(prompt),
       ],
+    );
+  }
+
+  /// 互传状态条：运行状态 + 启停 + 刷新（手机端之前没有这个入口）。
+  Widget _transferStatus() {
+    final running = controller.isRunning;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.circle,
+            size: 9,
+            color: running ? Colors.green : Colors.grey,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              running
+                  ? '互传已开启 · ${controller.devices.length} 台设备'
+                  : '互传未启动',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+          TextButton(
+            onPressed: () => running
+                ? controller.stopService()
+                : controller.startService(),
+            child: Text(running ? '停止' : '开启'),
+          ),
+          IconButton(
+            tooltip: '刷新附近设备',
+            icon: const Icon(Icons.refresh, size: 16),
+            onPressed: () => controller.refreshDevices(),
+          ),
+        ],
+      ),
     );
   }
 

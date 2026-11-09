@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import '../features/chat/chat_message.dart';
+import '../features/chat/chat_store.dart';
 
 part 'database.g.dart';
 
@@ -38,7 +39,7 @@ class PendingOps extends Table {
 }
 
 @DriftDatabase(tables: [Tasks, PendingOps])
-class AppDatabase extends _$AppDatabase {
+class AppDatabase extends _$AppDatabase implements ChatStore {
   AppDatabase() : super(_openConnection());
 
   @override
@@ -66,6 +67,7 @@ class AppDatabase extends _$AppDatabase {
 
   /// 会话表用 DDL 直接建，不新增 Drift Table 类，因此无需重新生成 database.g.dart，
   /// 也完全不触碰 tasks / pending_ops。
+  @override
   Future<void> createChatTables() async {
     for (final sql in chatTableDdl) {
       await customStatement(sql);
@@ -103,7 +105,7 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> markPendingOpError(int id, String error) async {
     await (update(pendingOps)..where((t) => t.id.equals(id))).write(
-        PendingOpsCompanion(attempts: Value(1), lastError: Value(error)));
+        PendingOpsCompanion(attempts: const Value(1), lastError: Value(error)));
   }
 
   Future<List<Task>> completedBetween(String startIso, String endIso) =>
@@ -129,11 +131,13 @@ class AppDatabase extends _$AppDatabase {
   Future<void> chatExec(String sql, List<Variable> args) =>
       customStatement(sql, args);
 
+  @override
   Future<List<Map<String, dynamic>>> listChatConversations() => chatQuery(
         'SELECT * FROM conversations ORDER BY pinned DESC, last_message_at DESC',
         <Variable>[],
       );
 
+  @override
   Future<void> upsertChatConversation(
     String id,
     String alias,
@@ -153,17 +157,20 @@ class AppDatabase extends _$AppDatabase {
         ],
       );
 
+  @override
   Future<void> markChatRead(String id) => chatExec(
         'UPDATE conversations SET unread = 0 WHERE id = ?',
         <Variable>[Variable<String>(id)],
       );
 
+  @override
   Future<List<Map<String, dynamic>>> listChatMessages(String conversationId) =>
       chatQuery(
         'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT 300',
         <Variable>[Variable<String>(conversationId)],
       );
 
+  @override
   Future<void> insertChatMessage(ChatMessage message, String direction) =>
       chatExec(
         'INSERT OR REPLACE INTO messages '
@@ -188,6 +195,7 @@ class AppDatabase extends _$AppDatabase {
         ],
       );
 
+  @override
   Future<void> patchChatMessage(
     String id, {
     String? status,
@@ -216,11 +224,13 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  @override
   Future<void> deleteChatMessage(String id) => chatExec(
         'DELETE FROM messages WHERE id = ?',
         <Variable>[Variable<String>(id)],
       );
 
+  @override
   Future<void> clearChatConversation(String id) async {
     await chatExec(
       'DELETE FROM messages WHERE conversation_id = ?',
@@ -232,6 +242,7 @@ class AppDatabase extends _$AppDatabase {
     );
   }
 
+  @override
   Future<bool> isChatTrusted(String fingerprint) async {
     final rows = await chatQuery(
       'SELECT fingerprint FROM trusted_peers WHERE fingerprint = ?',
@@ -240,6 +251,7 @@ class AppDatabase extends _$AppDatabase {
     return rows.isNotEmpty;
   }
 
+  @override
   Future<void> trustChatPeer(String fingerprint) => chatExec(
         'INSERT OR IGNORE INTO trusted_peers (fingerprint, trusted_at) VALUES (?, ?)',
         <Variable>[
@@ -248,11 +260,13 @@ class AppDatabase extends _$AppDatabase {
         ],
       );
 
+  @override
   Future<void> revokeChatTrust(String fingerprint) => chatExec(
         'DELETE FROM trusted_peers WHERE fingerprint = ?',
         <Variable>[Variable<String>(fingerprint.toUpperCase())],
       );
 
+  @override
   Future<void> enqueueChatOutbox(String target, String payload, String id) =>
       chatExec(
         'INSERT OR REPLACE INTO outbox (id, payload, target, created_at) VALUES (?, ?, ?, ?)',
@@ -264,16 +278,19 @@ class AppDatabase extends _$AppDatabase {
         ],
       );
 
+  @override
   Future<List<Map<String, dynamic>>> listChatOutbox() => chatQuery(
         'SELECT * FROM outbox ORDER BY created_at ASC',
         <Variable>[],
       );
 
+  @override
   Future<void> removeChatOutbox(String id) => chatExec(
         'DELETE FROM outbox WHERE id = ?',
         <Variable>[Variable<String>(id)],
       );
 
+  @override
   Future<void> bumpChatOutbox(String id, String error) => chatExec(
         'UPDATE outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?',
         <Variable>[Variable<String>(error), Variable<String>(id)],

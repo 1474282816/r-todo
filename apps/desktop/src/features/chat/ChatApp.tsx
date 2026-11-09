@@ -22,6 +22,8 @@ import {
   Image as ImageIcon,
   MessageSquare,
   Paperclip,
+  Play,
+  Power,
   RefreshCw,
   Send,
   Settings2,
@@ -64,6 +66,7 @@ import {
   discoverDevices,
   flashTransferWindow,
   formatSize,
+  getPendingIncoming,
   getTransferState,
   readFileBytes,
   rejectTransfer,
@@ -71,6 +74,7 @@ import {
   sendChatFiles,
   sendChatText,
   startTransfer,
+  stopTransfer,
   subscribeTransfer,
   type ChatMessage,
   type TransferDevice,
@@ -177,6 +181,8 @@ export function ChatApp({ onLegacy }: { onLegacy: () => void }) {
   const [narrow, setNarrow] = useState(false);
   const [manualIp, setManualIp] = useState("");
   const activeRef = useRef<string | null>(null);
+  /** 事件回调里读最新状态，避免因 state 变化重订阅而漏掉事件。 */
+  const stateRef = useRef<TransferStateView | null>(null);
   const selfRef = useRef<{ fp: string; alias: string }>({ fp: "", alias: "r-todo" });
 
   useEffect(() => {
@@ -188,6 +194,10 @@ export function ChatApp({ onLegacy }: { onLegacy: () => void }) {
       fp: state?.fingerprint ?? "",
       alias: state?.alias ?? "r-todo",
     };
+  }, [state]);
+
+  useEffect(() => {
+    stateRef.current = state;
   }, [state]);
 
   const refreshConversations = useCallback(async () => {
@@ -278,6 +288,35 @@ export function ChatApp({ onLegacy }: { onLegacy: () => void }) {
     [refreshConversations, refreshMessages],
   );
 
+  /**
+   * 恢复仍在服务端等待确认的接收请求。
+   * 旧「高级设置」界面靠 getPendingIncoming() 补回弹窗，会话界面缺这一步，
+   * 就会表现为「对方发文件过来，电脑端一点反应都没有」。
+   */
+  const restorePending = useCallback(async () => {
+    try {
+      const list = await getPendingIncoming();
+      for (const item of list) {
+        const fp = item.device.fingerprint.toUpperCase();
+        const request: TrustRequest = {
+          sessionId: item.session_id,
+          alias: item.device.alias || fp.slice(0, 8),
+          fingerprint: fp,
+          files: item.files,
+        };
+        const trusted = await isTrusted(fp);
+        const autoAccept = stateRef.current?.settings.autoAcceptFavorites ?? true;
+        if (trusted && autoAccept) {
+          await acceptIncoming(request, false);
+        } else {
+          setTrustRequest(request);
+        }
+      }
+    } catch {
+      // 服务未启动时没有待确认请求
+    }
+  }, [acceptIncoming]);
+
   const handleIncoming = useCallback(
     async (payload: Extract<TransferEventPayload, { type: "incoming" }>) => {
       const fp = payload.device.fingerprint.toUpperCase();
@@ -288,14 +327,14 @@ export function ChatApp({ onLegacy }: { onLegacy: () => void }) {
         files: payload.files,
       };
       const trusted = await isTrusted(fp);
-      const autoAccept = state?.settings.autoAcceptFavorites ?? true;
+      const autoAccept = stateRef.current?.settings.autoAcceptFavorites ?? true;
       if (trusted && autoAccept) {
         await acceptIncoming(request, false);
       } else {
         setTrustRequest(request);
       }
     },
-    [acceptIncoming, state],
+    [acceptIncoming],
   );
 
   const flushOutbox = useCallback(async () => {
@@ -320,21 +359,8 @@ export function ChatApp({ onLegacy }: { onLegacy: () => void }) {
     let cancelled = false;
 
     const boot = async () => {
-      await initChatDb();
-      await refreshConversations();
-      let current = await getTransferState();
-      if (!current.running) {
-        try {
-          const started = await startTransfer();
-          current = { ...current, running: started.running, fingerprint: started.fingerprint };
-        } catch {
-          // 服务起不来仍可浏览历史
-        }
-      }
-      if (cancelled) return;
-      setState(current);
-      await discoverDevices().catch(() => undefined);
-
+      // 先订阅，再做任何可能耗时或重启服务的动作：订阅太晚会漏掉 incoming 事件，
+      // 而 Rust 侧只在自动开窗后补发一次（900ms），救不回来。
       const off = await subscribeTransfer((payload) => {
         switch (payload.type) {
           case "devices":
@@ -379,8 +405,39 @@ export function ChatApp({ onLegacy }: { onLegacy: () => void }) {
             break;
         }
       });
-      if (cancelled) off();
-      else unlisten = off;
+      if (cancelled) {
+        off();
+        return;
+      }
+      unlisten = off;
+
+      await initChatDb();
+      await refreshConversations();
+
+      let current = await getTransferState();
+      if (!current.running) {
+        try {
+          const started = await startTransfer();
+          current = {
+            ...current,
+            running: started.running,
+            alias: started.alias,
+            port: started.port,
+            fingerprint: started.fingerprint,
+            error: null,
+          };
+        } catch (e) {
+          // 启动失败要让人看见原因（端口占用 / 防火墙 / 组播不可用），别再静默吞掉。
+          current = { ...current, running: false, error: String(e) };
+        }
+      }
+      if (cancelled) return;
+      setState(current);
+
+      // 把还挂在服务端的待确认请求补回来（与旧「高级设置」界面一致）
+      await restorePending();
+
+      await discoverDevices().catch(() => undefined);
     };
 
     void boot();
@@ -401,7 +458,53 @@ export function ChatApp({ onLegacy }: { onLegacy: () => void }) {
       window.clearInterval(discover);
       window.removeEventListener("resize", onResize);
     };
-  }, [flash, flushOutbox, handleIncoming, handleIncomingMessage, refreshConversations, refreshMessages]);
+  }, [flash, flushOutbox, handleIncoming, handleIncomingMessage, refreshConversations, refreshMessages, restorePending]);
+
+  const startService = useCallback(async () => {
+    try {
+      const info = await startTransfer();
+      setState((prev) =>
+        prev
+          ? {
+              ...prev,
+              running: info.running,
+              alias: info.alias,
+              port: info.port,
+              fingerprint: info.fingerprint,
+              error: null,
+            }
+          : prev,
+      );
+      await discoverDevices().catch(() => undefined);
+    } catch (e) {
+      const text = String(e);
+      setState((prev) => (prev ? { ...prev, running: false, error: text } : prev));
+      flash(text);
+    }
+  }, [flash]);
+
+  const stopService = useCallback(async () => {
+    try {
+      await stopTransfer();
+      setState((prev) => (prev ? { ...prev, running: false } : prev));
+      setDevices([]);
+    } catch (e) {
+      flash(String(e));
+    }
+  }, [flash]);
+
+  /** 刷新 = 重新广播一次并扫描；服务没跑就先拉起来。 */
+  const refreshDevices = useCallback(async () => {
+    try {
+      if (!stateRef.current?.running) {
+        await startService();
+        return;
+      }
+      await discoverDevices();
+    } catch (e) {
+      flash(String(e));
+    }
+  }, [flash, startService]);
 
   const openConversation = useCallback(
     async (id: string) => {
@@ -644,14 +747,35 @@ export function ChatApp({ onLegacy }: { onLegacy: () => void }) {
             )}
           />
           <span className="truncate text-[10px] text-neutral-400">
-            {state?.running ? `已连接 · ${devices.length} 台设备` : "互传未启动"}
+            {state?.running
+              ? `已连接 · ${devices.length} 台设备`
+              : state?.error
+                ? "互传启动失败"
+                : "互传未启动"}
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {state?.running ? (
+            <button
+              className="rounded p-1.5 hover:bg-black/5 dark:hover:bg-white/10"
+              title="停止互传服务"
+              onClick={() => void stopService()}
+            >
+              <Power size={14} />
+            </button>
+          ) : (
+            <button
+              className="rounded p-1.5 text-emerald-600 hover:bg-black/5 dark:hover:bg-white/10"
+              title="启动互传服务"
+              onClick={() => void startService()}
+            >
+              <Play size={14} />
+            </button>
+          )}
           <button
             className="rounded p-1.5 hover:bg-black/5 dark:hover:bg-white/10"
-            title="刷新设备"
-            onClick={() => void discoverDevices().catch(() => undefined)}
+            title="刷新设备（重新广播并扫描）"
+            onClick={() => void refreshDevices()}
           >
             <RefreshCw size={14} />
           </button>
@@ -664,6 +788,19 @@ export function ChatApp({ onLegacy }: { onLegacy: () => void }) {
           </button>
         </div>
       </div>
+
+      {state?.error && (
+        <div className="shrink-0 border-b border-black/5 bg-red-500/10 px-3 py-1.5 text-[10px] text-red-500 dark:border-white/5">
+          {state.error}
+        </div>
+      )}
+
+      {state?.running && devices.length === 0 && (
+        <div className="shrink-0 border-b border-black/5 px-3 py-1.5 text-[10px] text-amber-600 dark:border-white/5">
+          还没发现附近设备：让对方在自己的互传里点一次「刷新」，并确认两台设备在同一个
+          Wi-Fi、Windows 防火墙已放行本程序（组播入站被拦时手机端看不到本机）。
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         {(!narrow || !activeId) && (
