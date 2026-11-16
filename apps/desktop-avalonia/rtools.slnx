@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RTools.Desktop.Tests/RTools.Desktop.Tests.csproj" />
+    <Project Path="src/RTools.Desktop/RTools.Desktop.csproj" />
+  </Folder>
+</Solution>

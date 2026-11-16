@@ -1,0 +1,10 @@
+[source.crates-io]
+replace-with = "rtools-crates"
+
+[source.rtools-crates]
+registry = "sparse+https://rsproxy.cn/index/"
+
+[http]
+multiplexing = false
+check-revoke = false
+

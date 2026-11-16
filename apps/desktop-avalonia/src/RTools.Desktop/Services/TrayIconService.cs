@@ -1,0 +1,83 @@
+using Avalonia.Controls;
+using RTools.Desktop.ViewModels;
+
+namespace RTools.Desktop.Services;
+
+public static class TrayIconService
+{
+    private static TrayIcon? _tray;
+
+    public static void Install(Window window, MainWindowViewModel viewModel)
+    {
+        if (_tray is not null)
+        {
+            return;
+        }
+        var show = new NativeMenuItem("显示主窗口");
+        show.Click += (_, _) =>
+        {
+            window.Show();
+            window.WindowState = WindowState.Normal;
+            window.Activate();
+        };
+        var hide = new NativeMenuItem("隐藏窗口");
+        hide.Click += (_, _) => window.Hide();
+        var transfer = new NativeMenuItem("打开互传");
+        transfer.Click += async (_, _) => await viewModel.OpenTransferCommand.ExecuteAsync(null);
+        var quit = new NativeMenuItem("退出");
+        quit.Click += (_, _) =>
+        {
+            if (window is MainWindow mainWindow)
+            {
+                mainWindow.ExitApplication();
+            }
+            else
+            {
+                Environment.Exit(0);
+            }
+        };
+        var menu = new NativeMenu
+        {
+            Items =
+            {
+                show,
+                hide,
+                new NativeMenuItemSeparator(),
+                transfer,
+                new NativeMenuItemSeparator(),
+                quit
+            }
+        };
+        _tray = new TrayIcon
+        {
+            ToolTipText = "rtools",
+            Menu = menu,
+            Icon = LoadIcon(),
+            IsVisible = true
+        };
+        _tray.Clicked += (_, _) =>
+        {
+            window.Show();
+            window.Activate();
+        };
+    }
+
+    private static WindowIcon LoadIcon()
+    {
+        var candidates = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, "Assets", "rtools.ico"),
+            Path.Combine(AppContext.BaseDirectory, "rtools.ico")
+        };
+        var path = candidates.FirstOrDefault(File.Exists);
+        if (path is null)
+        {
+            return new WindowIcon(
+                new MemoryStream(
+                    Convert.FromBase64String(
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=")));
+        }
+        return new WindowIcon(path);
+    }
+}
+

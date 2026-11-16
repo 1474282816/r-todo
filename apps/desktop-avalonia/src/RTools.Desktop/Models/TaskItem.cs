@@ -1,0 +1,87 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using System.Text.Json.Serialization;
+
+namespace RTools.Desktop.Models;
+
+[JsonConverter(typeof(JsonStringEnumConverter<TaskPriority>))]
+public enum TaskPriority
+{
+    [JsonStringEnumMemberName("high")]
+    High,
+    [JsonStringEnumMemberName("medium")]
+    Medium,
+    [JsonStringEnumMemberName("low")]
+    Low
+}
+
+public sealed partial class TaskItem : ObservableObject
+{
+    public required string Id { get; init; }
+
+    [ObservableProperty]
+    private string _title = "";
+
+    [ObservableProperty]
+    private TaskPriority _priority = TaskPriority.Medium;
+
+    [ObservableProperty]
+    private DateTimeOffset? _remindAt;
+
+    [ObservableProperty]
+    private int _remindOffsetMinutes = 15;
+
+    [ObservableProperty]
+    private string? _repeatRule;
+
+    [ObservableProperty]
+    private double _sortOrder;
+
+    [ObservableProperty]
+    private DateTimeOffset? _completedAt;
+
+    [ObservableProperty]
+    private DateTimeOffset? _deletedAt;
+
+    public required DateTimeOffset CreatedAt { get; init; }
+
+    [ObservableProperty]
+    private DateTimeOffset _updatedAt;
+
+    [ObservableProperty]
+    private long _revision;
+
+    public bool IsCompleted => CompletedAt is not null;
+
+    public bool IsVisible => DeletedAt is null;
+
+    public string PriorityLabel => Priority switch
+    {
+        TaskPriority.High => "高",
+        TaskPriority.Medium => "中",
+        _ => "低"
+    };
+
+    public string ReminderLabel => RemindAt is null
+        ? ""
+        : RemindAt.Value.LocalDateTime.ToString("MM-dd HH:mm");
+
+    public TaskItem Clone()
+    {
+        return new TaskItem
+        {
+            Id = Id,
+            Title = Title,
+            Priority = Priority,
+            RemindAt = RemindAt,
+            RemindOffsetMinutes = RemindOffsetMinutes,
+            RepeatRule = RepeatRule,
+            SortOrder = SortOrder,
+            CompletedAt = CompletedAt,
+            DeletedAt = DeletedAt,
+            CreatedAt = CreatedAt,
+            UpdatedAt = UpdatedAt,
+            Revision = Revision
+        };
+    }
+}
+

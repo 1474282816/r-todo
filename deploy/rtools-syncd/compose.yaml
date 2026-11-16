@@ -1,0 +1,25 @@
+services:
+  rtools-syncd:
+    build:
+      context: ../../crates/rtools-workspace
+      dockerfile: rtools-syncd/Dockerfile
+    image: rtools-syncd:0.1.0
+    container_name: rtools-syncd
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18092:18092"
+    volumes:
+      - ./data:/data
+      - ./migration:/migration:ro
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/18092"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
