@@ -1931,7 +1931,7 @@ dependencies = [
 
 [[package]]
 name = "rtools-domain"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "serde",
@@ -1941,7 +1941,7 @@ dependencies = [
 
 [[package]]
 name = "rtools-engine"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1968,7 +1968,7 @@ dependencies = [
 
 [[package]]
 name = "rtools-sync-proto"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "rtools-domain",
@@ -1977,7 +1977,7 @@ dependencies = [
 
 [[package]]
 name = "rtools-syncd"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-stream",
