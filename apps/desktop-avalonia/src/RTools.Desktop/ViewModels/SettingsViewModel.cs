@@ -314,6 +314,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             ErrorMessage = null;
+            // 复选框是单向绑定，命令执行时 TransferRunning 仍是切换前状态。
             var status = TransferRunning
                 ? await _engine.StopTransferAsync()
                 : await _engine.StartTransferAsync();

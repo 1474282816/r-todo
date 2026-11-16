@@ -55,8 +55,6 @@ class _RTodoAppState extends ConsumerState<RTodoApp> {
       // 否则应用升级/重装后小组件仍显示旧数据）
       await updateWidgetData(ref.read(taskListProvider));
       _startReminderScheduler();
-      // 注册小组件交互回调（点击小组件跳转）
-      await initWidget();
     });
   }
 

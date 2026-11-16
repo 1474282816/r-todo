@@ -47,7 +47,12 @@ class TransferSettingsStore {
   Future<TransferSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
 
-    final alias = prefs.getString(_keyAlias)?.trim();
+    var alias = prefs.getString(_keyAlias)?.trim();
+    // 旧版默认设备名 r-todo 随品牌迁移改为 rtools；用户自定义名称保持不变。
+    if (alias == 'r-todo') {
+      alias = TransferSettings.defaultAlias;
+      await prefs.setString(_keyAlias, alias);
+    }
     final port = prefs.getInt(_keyPort);
     final pin = prefs.getString(_keyPin)?.trim();
 

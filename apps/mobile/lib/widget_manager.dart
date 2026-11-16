@@ -20,28 +20,27 @@ Future<void> updateWidgetData(List<TodoTask> tasks) async {
   }).toList();
 
   await HomeWidget.saveWidgetData('tasks', jsonEncode(jsonTasks));
+  // 没有实际添加小组件时无需广播更新。home_widget 0.9.3 在部分 Android
+  // 启动场景会对空 provider 抛空指针，跳过更新可避免无关的平台异常。
+  final installed = await HomeWidget.getInstalledWidgets();
+  if (installed.isEmpty) return;
+  final installedClasses = installed
+      .map((widget) => widget.androidClassName)
+      .whereType<String>()
+      .toSet();
+  final providers = <String>[
+    'dev.rtodo.r_todo_mobile.widget.TodoWidgetProvider',
+    'dev.rtodo.r_todo_mobile.widget.TodoWidget2x2Provider',
+    'dev.rtodo.r_todo_mobile.widget.TodoWidget4x2Provider',
+    'dev.rtodo.r_todo_mobile.widget.TodoWidget4x3Provider',
+  ];
   // 更新所有尺寸变体（2x2/3x2/4x2/4x3），否则未更新的变体不刷新
-  await Future.wait([
-    HomeWidget.updateWidget(
-      qualifiedAndroidName: 'dev.rtodo.r_todo_mobile.widget.TodoWidgetProvider',
-    ),
-    HomeWidget.updateWidget(
-      qualifiedAndroidName: 'dev.rtodo.r_todo_mobile.widget.TodoWidget2x2Provider',
-    ),
-    HomeWidget.updateWidget(
-      qualifiedAndroidName: 'dev.rtodo.r_todo_mobile.widget.TodoWidget4x2Provider',
-    ),
-    HomeWidget.updateWidget(
-      qualifiedAndroidName: 'dev.rtodo.r_todo_mobile.widget.TodoWidget4x3Provider',
-    ),
-  ]);
-}
-
-/// 在 App 启动时调用，注册 widget 交互回调（可选）
-Future<void> initWidget() async {
-  // 注册点击交互回调（当用户点击 widget 上的任务时触发）
-  await HomeWidget.registerInteractivityCallback((uri) async {
-    // 如果 future 需要，可以在这里处理跳转
-    // 实际跳转由 Kotlin 侧的 HomeWidgetLaunchIntent 处理
-  });
+  await Future.wait(providers.where((provider) {
+    final shortName = provider.split('.').last;
+    return installedClasses.any(
+      (name) => name == shortName || name == '.$shortName',
+    );
+  }).map((provider) => HomeWidget.updateWidget(
+        qualifiedAndroidName: provider,
+      )));
 }

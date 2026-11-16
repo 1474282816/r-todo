@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/database.dart';
+import '../../state/task_store.dart';
 import '../transfer/transfer_service.dart';
 import 'chat_controller.dart';
 import 'chat_message.dart';
@@ -24,7 +24,8 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
   void initState() {
     super.initState();
     controller = ChatController(
-      store: AppDatabase(),
+      // 与待办共用同一个数据库实例，避免启动迁移时多个 SQLite 连接争锁。
+      store: ref.read(databaseProvider),
       transfer: ref.read(transferControllerProvider),
     );
     controller.addListener(_onChanged);

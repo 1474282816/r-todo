@@ -79,7 +79,16 @@ class AppDatabase extends _$AppDatabase implements ChatStore {
   }
 
   Future<List<Task>> getAllTasks() =>
-      (select(tasks)..where((t) => t.deleted.equals(false))).get();
+      (select(tasks)
+            ..where((t) => t.deleted.equals(false))
+            ..orderBy([
+              (t) => OrderingTerm(
+                    expression: t.completedAt.isNull(),
+                    mode: OrderingMode.desc,
+                  ),
+              (t) => OrderingTerm(expression: t.sortOrder),
+            ]))
+          .get();
 
   Future<List<Task>> getAllTasksIncludingDeleted() => select(tasks).get();
 

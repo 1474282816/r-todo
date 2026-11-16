@@ -42,5 +42,18 @@ public sealed class SettingsViewModelTests
         Assert.True(vm.McpRunning);
         Assert.False(string.IsNullOrWhiteSpace(vm.McpToken));
     }
+
+    [Fact]
+    public async Task TransferToggle_StartsWhenInitiallyStopped()
+    {
+        var engine = new InMemoryEngineClient();
+        await engine.StartAsync();
+        var vm = new SettingsViewModel(engine);
+
+        await vm.ToggleTransferCommand.ExecuteAsync(null);
+
+        Assert.True(vm.TransferRunning);
+        Assert.True((await engine.GetTransferStatusAsync()).Running);
+    }
 }
 

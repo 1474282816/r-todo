@@ -32,12 +32,13 @@ rtools 0.2.0 把原 r-todo 桌面端迁移到 Avalonia 12 和 C#，同时保留 
 
 - Rust 测试：`cargo test -p rtools-domain -p rtools-engine -p rtools-syncd` 通过。
 - Flutter：`flutter analyze` 无问题，全部测试通过。
-- .NET：7 项测试通过。
+- .NET：8 项测试通过。
 - Windows 便携包和 Inno Setup 安装包均已实际安装、启动并连接 Engine 与同步服务。
+- Windows 与 Android 已完成真实双向任务同步、完成与删除传播，以及 LocalSend 兼容文件互传；文件成功保存到手机 `Download/rtools`。
 - 同步服务：`https://todo.renrunqi.com/api/v1/health` 返回正常，SQLite 完整性为 `ok`。
 
 ## 校验值
 
-- Windows 安装包 SHA-256：`FD839AAC3AA77B407CAAD90CA48E325F3E31667E6AD0896458036B220F2B739C`
-- Windows 便携压缩包 SHA-256：`CE0F8164047C5217FEA645D14EB2C88A30840B3478C27805B9BE43B1564F4C00`
-- Android APK SHA-256：`CD1535CDF391696BBAF860FCC3DC64DF56CBF97D7B4086F580642D3C575FF2EB`
+- Windows 安装包 SHA-256：`E19F7CA180F642DB31C1B984D9C1EF846F31F4300F4935CD19091FB0A83C42D2`
+- Windows 便携压缩包 SHA-256：`ABCFB4DFA5933348CA6D9512BB1C58264A0C95B3FBDE0E61CD613E2D8ED098A2`
+- Android APK SHA-256：`73F723164E4726783AFF93CA638BE9A75BECB0C7B9CDD7C7C75ABB30E579B065`
