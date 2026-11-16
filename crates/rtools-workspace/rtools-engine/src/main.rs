@@ -750,6 +750,51 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
             ));
             Ok(json!({"ok":true}))
         }
+        "chat.revoke_trust" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            rpc_try!(db::revoke_peer_trust(
+                &conn,
+                payload["fingerprint"].as_str().unwrap_or_default()
+            ));
+            Ok(json!({"ok":true}))
+        }
+        "chat.send_files" => {
+            let paths: Vec<PathBuf> = rpc_try!(serde_json::from_value(payload["paths"].clone()));
+            let fingerprint = payload["fingerprint"].as_str().unwrap_or_default();
+            let session = rpc_try!(
+                state
+                    .transfer
+                    .lock()
+                    .await
+                    .send(paths, fingerprint, None)
+                    .await
+            );
+            Ok(json!({"session_id":session}))
+        }
+        "chat.delete_file" => {
+            let path = PathBuf::from(payload["path"].as_str().unwrap_or_default());
+            let receive_dir = state.data_dir.join("transfer").join("receive");
+            let default_download = std::env::var_os("USERPROFILE")
+                .map(PathBuf::from)
+                .unwrap_or_default()
+                .join("Downloads")
+                .join("rtools");
+            if !path.starts_with(&receive_dir) && !path.starts_with(&default_download) {
+                return Err(RpcError {
+                    code: "INVALID_PATH".into(),
+                    message: "只能删除 rtools 接收目录中的文件".into(),
+                });
+            }
+            if path.is_file() {
+                rpc_try!(std::fs::remove_file(&path));
+            }
+            let conn = rpc_try!(db::open(&state.db_path));
+            rpc_try!(db::delete_chat_file_record(
+                &conn,
+                path.to_string_lossy().as_ref()
+            ));
+            Ok(json!({"ok":true}))
+        }
         _ => Err(RpcError {
             code: "METHOD_NOT_FOUND".into(),
             message: format!("unknown method: {method}"),

@@ -112,6 +112,16 @@ public interface IEngineClient : IAsyncDisposable
     Task TrustChatPeerAsync(
         string fingerprint,
         CancellationToken cancellationToken = default);
+    Task RevokeChatTrustAsync(
+        string fingerprint,
+        CancellationToken cancellationToken = default);
+    Task SendChatFilesAsync(
+        string fingerprint,
+        IReadOnlyList<string> paths,
+        CancellationToken cancellationToken = default);
+    Task DeleteChatFileAsync(
+        string path,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class TaskChangedEventArgs : EventArgs

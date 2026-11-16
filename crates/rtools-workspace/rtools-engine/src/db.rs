@@ -506,6 +506,22 @@ pub fn trust_peer(conn: &Connection, fingerprint: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn revoke_peer_trust(conn: &Connection, fingerprint: &str) -> Result<()> {
+    conn.execute(
+        "DELETE FROM trusted_peers WHERE fingerprint=?1",
+        [fingerprint.to_ascii_uppercase()],
+    )?;
+    Ok(())
+}
+
+pub fn delete_chat_file_record(conn: &Connection, path: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE messages SET file_path=NULL WHERE file_path=?1",
+        [path],
+    )?;
+    Ok(())
+}
+
 pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
     conn.execute(
         "INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",

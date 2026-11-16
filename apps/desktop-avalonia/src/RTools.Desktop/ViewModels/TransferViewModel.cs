@@ -374,6 +374,81 @@ public sealed partial class TransferViewModel : ObservableObject
         await RefreshConversationsAsync();
     }
 
+    [RelayCommand]
+    private async Task RevokeTrustAsync()
+    {
+        if (SelectedConversation is null)
+        {
+            return;
+        }
+        try
+        {
+            await _engine.RevokeChatTrustAsync(SelectedConversation.Id);
+            StatusMessage = $"已撤销 {SelectedConversation.Alias} 的免确认信任";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task SendConversationFilesAsync()
+    {
+        if (SelectedConversation is null)
+        {
+            ErrorMessage = "请先选择会话";
+            return;
+        }
+        var files = await Avalonia.Controls.TopLevel.GetTopLevel(
+            Avalonia.Application.Current!.ApplicationLifetime
+                is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+                ? desktop.MainWindow!
+                : throw new InvalidOperationException("窗口尚未就绪"))!.StorageProvider.OpenFilePickerAsync(
+            new FilePickerOpenOptions
+            {
+                AllowMultiple = true,
+                Title = "选择要发送到会话的文件"
+            });
+        var paths = files
+            .Select(file => file.TryGetLocalPath())
+            .Where(path => path is not null)
+            .Cast<string>()
+            .ToList();
+        if (paths.Count == 0)
+        {
+            return;
+        }
+        try
+        {
+            await _engine.SendChatFilesAsync(SelectedConversation.Id, paths);
+            StatusMessage = $"已向 {SelectedConversation.Alias} 发送 {paths.Count} 个文件";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteMessageFileAsync(ChatMessageItem? message)
+    {
+        if (message?.FilePath is null)
+        {
+            return;
+        }
+        try
+        {
+            await _engine.DeleteChatFileAsync(message.FilePath);
+            StatusMessage = "已删除接收文件";
+            await RefreshMessagesAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
     public async Task RefreshDevicesAsync()
     {
         var devices = await _engine.DiscoverTransferDevicesAsync();

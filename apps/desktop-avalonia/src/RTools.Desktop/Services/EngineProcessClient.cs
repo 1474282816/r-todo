@@ -527,6 +527,25 @@ public sealed class EngineProcessClient : IEngineClient
         CancellationToken cancellationToken = default)
         => SendVoidAsync("chat.trust", new { fingerprint }, cancellationToken);
 
+    public Task RevokeChatTrustAsync(
+        string fingerprint,
+        CancellationToken cancellationToken = default)
+        => SendVoidAsync("chat.revoke_trust", new { fingerprint }, cancellationToken);
+
+    public Task SendChatFilesAsync(
+        string fingerprint,
+        IReadOnlyList<string> paths,
+        CancellationToken cancellationToken = default)
+        => SendVoidAsync(
+            "chat.send_files",
+            new { fingerprint, paths },
+            cancellationToken);
+
+    public Task DeleteChatFileAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+        => SendVoidAsync("chat.delete_file", new { path }, cancellationToken);
+
     private Process StartEngineProcess()
     {
         var exeName = OperatingSystem.IsWindows() ? "rtools-engine.exe" : "rtools-engine";
