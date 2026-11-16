@@ -141,6 +141,18 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
             for (final d in controller.devices)
               ListTile(
                 leading: const Icon(Icons.devices),
+                trailing: IconButton(
+                  tooltip: '发送文件',
+                  icon: const Icon(Icons.upload_file_outlined),
+                  onPressed: () async {
+                    final files = await controller.transfer.pickFiles();
+                    if (files.isEmpty || !mounted) return;
+                    await controller.transfer.sendStaged(
+                      files,
+                      d.fingerprint,
+                    );
+                  },
+                ),
                 title: Text(d.alias),
                 subtitle: Text(
                     d.fingerprint.length > 12
