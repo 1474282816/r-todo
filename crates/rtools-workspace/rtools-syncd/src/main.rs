@@ -5,22 +5,13 @@ use rtools_syncd::{
     db,
     http::{serve, AppState},
 };
-use std::{
-    net::SocketAddr,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 use tokio::sync::{broadcast, Mutex};
 
 #[derive(Parser, Debug)]
 #[command(name = "rtools-syncd", version)]
 struct Cli {
-    #[arg(
-        long,
-        global = true,
-        default_value = "./data",
-        env = "RTOOLS_DATA_DIR"
-    )]
+    #[arg(long, global = true, default_value = "./data", env = "RTOOLS_DATA_DIR")]
     data_dir: PathBuf,
     #[command(subcommand)]
     command: Command,
@@ -135,8 +126,7 @@ async fn main() -> Result<()> {
         Command::Seed { json } => {
             let mut conn = db::open(&db_path)?;
             let content = std::fs::read_to_string(&json)?;
-            let tasks =
-                rtools_domain::parse_rtodo_json(&content).map_err(anyhow::Error::msg)?;
+            let tasks = rtools_domain::parse_rtodo_json(&content).map_err(anyhow::Error::msg)?;
             let mut count = 0;
             for task in tasks {
                 if db::get_task(&conn, &task.id)?.is_none() {

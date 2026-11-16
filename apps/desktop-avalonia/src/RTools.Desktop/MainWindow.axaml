@@ -229,6 +229,26 @@
                             <Button Command="{Binding SyncNowCommand}" Content="立即同步" />
                             <Button Command="{Binding LogoutSyncCommand}" Content="退出同步" />
                         </StackPanel>
+                        <Button Command="{Binding CreatePairingCodeCommand}"
+                                Content="生成新设备接入码" />
+                        <ItemsControl ItemsSource="{Binding Devices}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" />
+                                            <TextBlock Text="{Binding Id}"
+                                                       Foreground="#777"
+                                                       FontSize="9" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                Command="{Binding $parent[Window].DataContext.Settings.RevokeDeviceCommand}"
+                                                CommandParameter="{Binding}"
+                                                Content="撤销" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <Separator />
                         <TextBlock Text="MCP" FontWeight="SemiBold" />
                         <StackPanel Orientation="Horizontal" Spacing="8">

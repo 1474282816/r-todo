@@ -109,8 +109,7 @@ fn handle(mut stream: TcpStream, db_path: &std::path::Path) -> Result<()> {
         return Ok(());
     }
     stream.write_all(
-        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-            .as_bytes(),
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".as_bytes(),
     )?;
     Ok(())
 }
@@ -129,4 +128,3 @@ pub fn token_from_db(conn: &Connection) -> Result<String> {
 pub fn is_enabled(conn: &Connection) -> Result<bool> {
     Ok(db::get_setting(conn, "mcp_enabled")?.as_deref() == Some("true"))
 }
-

@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
-use rusqlite::Connection;
 use rtools_domain::{Task, TaskPatch};
 use rtools_sync_proto::{Operation, OperationBatch, OperationResult};
+use rusqlite::Connection;
 
 use crate::{
     db,
@@ -36,6 +36,20 @@ pub fn summary(conn: &Connection) -> Result<SyncSummary> {
     })
 }
 
+pub fn restore_credentials(
+    conn: &Connection,
+    server_url: &str,
+    device_id: &str,
+    device_name: &str,
+    token: &str,
+) -> Result<SyncSummary> {
+    db::set_sync_value(conn, "server_url", server_url.trim_end_matches('/'))?;
+    db::set_sync_value(conn, "device_id", device_id)?;
+    db::set_sync_value(conn, "device_name", device_name)?;
+    db::set_sync_value(conn, "token", token)?;
+    summary(conn)
+}
+
 pub async fn pair(
     db_path: &std::path::Path,
     server_url: &str,
@@ -65,7 +79,14 @@ fn persist_pair(
 }
 
 pub fn logout(conn: &Connection) -> Result<SyncSummary> {
-    for key in ["token", "device_id", "device_name", "server_url", "cursor", "last_error"] {
+    for key in [
+        "token",
+        "device_id",
+        "device_name",
+        "server_url",
+        "cursor",
+        "last_error",
+    ] {
         conn.execute("DELETE FROM sync_state WHERE key=?1", [key])?;
     }
     summary(conn)
@@ -165,10 +186,12 @@ pub fn enqueue_task_update(conn: &Connection, task: &Task, operation_id: &str) -
 pub fn merge_snapshot(conn: &mut Connection, tasks: Vec<Task>) -> Result<()> {
     for task in tasks {
         let local = db::get_task(conn, &task.id)?;
-        if local.as_ref().is_none_or(|local| task.revision >= local.revision) {
+        if local
+            .as_ref()
+            .is_none_or(|local| task.revision >= local.revision)
+        {
             db::upsert_task(conn, &task)?;
         }
     }
     Ok(())
 }
-

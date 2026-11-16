@@ -2,8 +2,8 @@ use anyhow::Result;
 use rtodo_transfer_core::{TransferConfig, TransferService};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
 use tokio::sync::broadcast;
+use tokio::sync::{mpsc, Mutex};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferStatus {
@@ -35,7 +35,11 @@ impl TransferRuntime {
         self.status.clone()
     }
 
-    pub async fn start(&mut self, receive_dir: std::path::PathBuf, identity_dir: std::path::PathBuf) -> Result<TransferStatus> {
+    pub async fn start(
+        &mut self,
+        receive_dir: std::path::PathBuf,
+        identity_dir: std::path::PathBuf,
+    ) -> Result<TransferStatus> {
         let config = TransferConfig {
             alias: "rtools".into(),
             receive_dir,
@@ -154,19 +158,13 @@ impl TransferRuntime {
     pub async fn reject(&self, session_id: &str) -> Result<(), String> {
         let guard = self.service.lock().await;
         let service = guard.as_ref().ok_or("互传服务未启动")?;
-        service
-            .reject(session_id)
-            .await
-            .map_err(|e| e.to_string())
+        service.reject(session_id).await.map_err(|e| e.to_string())
     }
 
     pub async fn cancel(&self, session_id: &str) -> Result<(), String> {
         let guard = self.service.lock().await;
         let service = guard.as_ref().ok_or("互传服务未启动")?;
-        service
-            .cancel(session_id)
-            .await
-            .map_err(|e| e.to_string())
+        service.cancel(session_id).await.map_err(|e| e.to_string())
     }
 
     pub async fn send_message(
@@ -183,7 +181,9 @@ impl TransferRuntime {
     }
 }
 
-pub fn default_transfer_dirs(data_dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+pub fn default_transfer_dirs(
+    data_dir: &std::path::Path,
+) -> (std::path::PathBuf, std::path::PathBuf) {
     let receive = dirs_download().join("rtools");
     let identity = data_dir.join("transfer");
     (receive, identity)
@@ -195,4 +195,3 @@ fn dirs_download() -> std::path::PathBuf {
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("Downloads")
 }
-

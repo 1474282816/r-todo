@@ -2,12 +2,15 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RTools.Desktop.Models;
 using RTools.Desktop.Services;
+using System.Collections.ObjectModel;
 
 namespace RTools.Desktop.ViewModels;
 
 public sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly IEngineClient _engine;
+
+    public event EventHandler? SyncCompleted;
 
     public SettingsViewModel(IEngineClient engine)
     {
@@ -33,7 +36,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private int _defaultReminderOffset = 15;
 
     [ObservableProperty]
-    private string _syncServerUrl = "";
+    private string _syncServerUrl = "https://todo.renrunqi.com";
 
     [ObservableProperty]
     private string _pairingCode = "";
@@ -64,6 +67,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string? _errorMessage;
+
+    [ObservableProperty]
+    private ObservableCollection<DeviceItem> _devices = [];
 
     public IReadOnlyList<string> Materials { get; } =
         ["半透明", "亚克力", "Mica", "Mica Alt", "无"];
@@ -110,6 +116,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             ApplyMcp(mcp);
             var transfer = await _engine.GetTransferStatusAsync(cancellationToken);
             TransferRunning = transfer.Running;
+            Devices = new ObservableCollection<DeviceItem>(
+                await _engine.ListDevicesAsync(cancellationToken));
         }
         catch (Exception ex)
         {
@@ -166,8 +174,46 @@ public sealed partial class SettingsViewModel : ObservableObject
             ErrorMessage = null;
             var status = await _engine.PairAsync(SyncServerUrl, PairingCode, DeviceName);
             ApplySync(status);
+            Devices = new ObservableCollection<DeviceItem>(
+                await _engine.ListDevicesAsync());
             StatusMessage = "配对成功";
             PairingCode = "";
+            SyncCompleted?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task CreatePairingCodeAsync()
+    {
+        try
+        {
+            var code = await _engine.CreatePairingCodeAsync();
+            PairingCode = code.Code;
+            StatusMessage = $"新设备接入码：{code.Code}（10 分钟内有效）";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RevokeDeviceAsync(DeviceItem? device)
+    {
+        if (device is null)
+        {
+            return;
+        }
+        try
+        {
+            await _engine.RevokeDeviceAsync(device.Id);
+            Devices = new ObservableCollection<DeviceItem>(
+                await _engine.ListDevicesAsync());
+            StatusMessage = $"已撤销 {device.Name}";
         }
         catch (Exception ex)
         {
@@ -183,6 +229,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ErrorMessage = null;
             ApplySync(await _engine.SyncNowAsync());
             StatusMessage = "同步完成";
+            SyncCompleted?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {

@@ -15,6 +15,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     {
         _engine = engine;
         Settings = new SettingsViewModel(engine);
+        Settings.SyncCompleted += async (_, _) => await ReloadSafeAsync();
         Transfer = new TransferViewModel(engine);
         _engine.TasksChanged += OnTasksChanged;
     }

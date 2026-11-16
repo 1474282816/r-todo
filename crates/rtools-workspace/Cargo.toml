@@ -21,7 +21,6 @@ axum = { version = "0.8", features = ["ws", "macros"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
-ctrlc = "3"
 hex = "0.4"
 rand = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
@@ -31,7 +30,6 @@ serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "fs", "io-util", "signal"] }
-tokio-tungstenite = { version = "0.26", features = ["connect", "rustls-tls-webpki-roots"] }
 tower-http = { version = "0.6", features = ["trace", "cors", "limit"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

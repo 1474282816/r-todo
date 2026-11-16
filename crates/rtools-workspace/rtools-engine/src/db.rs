@@ -263,10 +263,7 @@ pub fn list_operations(conn: &Connection) -> Result<Vec<PendingOperation>> {
 }
 
 pub fn remove_operation(conn: &Connection, operation_id: &str) -> Result<()> {
-    conn.execute(
-        "DELETE FROM outbox WHERE operation_id=?1",
-        [operation_id],
-    )?;
+    conn.execute("DELETE FROM outbox WHERE operation_id=?1", [operation_id])?;
     Ok(())
 }
 
@@ -280,11 +277,9 @@ pub fn mark_operation_error(conn: &Connection, operation_id: &str, error: &str) 
 
 pub fn get_sync_value(conn: &Connection, key: &str) -> Result<Option<String>> {
     Ok(conn
-        .query_row(
-            "SELECT value FROM sync_state WHERE key=?1",
-            [key],
-            |row| row.get(0),
-        )
+        .query_row("SELECT value FROM sync_state WHERE key=?1", [key], |row| {
+            row.get(0)
+        })
         .optional()?)
 }
 

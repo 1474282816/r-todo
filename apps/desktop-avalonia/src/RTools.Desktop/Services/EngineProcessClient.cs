@@ -52,6 +52,23 @@ public sealed class EngineProcessClient : IEngineClient
             await _pipe.ConnectAsync(5000, cancellationToken);
             _readerTask = ReadLoopAsync(_shutdown.Token);
             await CallAsync("system.health", new { }, cancellationToken);
+            var token = WindowsCredentialStore.Read("sync-token");
+            var server = WindowsCredentialStore.Read("sync-server-url");
+            var device = WindowsCredentialStore.Read("sync-device-id");
+            var name = WindowsCredentialStore.Read("sync-device-name");
+            if (token is not null && server is not null && device is not null && name is not null)
+            {
+                await CallAsync(
+                    "sync.restore_credentials",
+                    new
+                    {
+                        server_url = server,
+                        device_id = device,
+                        device_name = name,
+                        token
+                    },
+                    cancellationToken);
+            }
         }
         finally
         {
@@ -161,10 +178,19 @@ public sealed class EngineProcessClient : IEngineClient
         string deviceName,
         CancellationToken cancellationToken = default)
     {
-        await CallAsync(
+        var value = await CallAsync(
             "sync.pair",
             new { server_url = serverUrl, pairing_code = pairingCode, device_name = deviceName },
             cancellationToken);
+        var deviceId = NullableString(value, "device_id");
+        var token = NullableString(value, "token");
+        if (deviceId is not null && token is not null)
+        {
+            WindowsCredentialStore.Save("sync-server-url", serverUrl.TrimEnd('/'));
+            WindowsCredentialStore.Save("sync-device-id", deviceId);
+            WindowsCredentialStore.Save("sync-device-name", deviceName);
+            WindowsCredentialStore.Save("sync-token", token);
+        }
         return await GetSyncStatusAsync(cancellationToken);
     }
 
@@ -177,6 +203,10 @@ public sealed class EngineProcessClient : IEngineClient
     public async Task LogoutSyncAsync(CancellationToken cancellationToken = default)
     {
         await CallAsync("sync.logout", new { }, cancellationToken);
+        WindowsCredentialStore.Delete("sync-token");
+        WindowsCredentialStore.Delete("sync-device-id");
+        WindowsCredentialStore.Delete("sync-device-name");
+        WindowsCredentialStore.Delete("sync-server-url");
     }
 
     public async Task<IReadOnlyList<DeviceItem>> ListDevicesAsync(
@@ -195,15 +225,19 @@ public sealed class EngineProcessClient : IEngineClient
         CancellationToken cancellationToken = default)
         => SendAsync<PairingCode>("devices.pairing_code", new { }, cancellationToken);
 
-    public async Task<bool> GetAutostartAsync(
+    public Task<bool> GetAutostartAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(OperatingSystem.IsWindows() && AutostartService.IsEnabled());
+
+    public async Task SetAutostartAsync(
+        bool enabled,
         CancellationToken cancellationToken = default)
     {
-        var value = await CallAsync("autostart.get", new { }, cancellationToken);
-        return value.GetProperty("enabled").GetBoolean();
+        await SendVoidAsync("autostart.set", new { enabled }, cancellationToken);
+        if (OperatingSystem.IsWindows())
+        {
+            AutostartService.Set(enabled);
+        }
     }
-
-    public Task SetAutostartAsync(bool enabled, CancellationToken cancellationToken = default)
-        => SendVoidAsync("autostart.set", new { enabled }, cancellationToken);
 
     public async Task<string?> GetSettingAsync(
         string key,

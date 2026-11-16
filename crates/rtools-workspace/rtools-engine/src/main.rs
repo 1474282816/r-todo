@@ -11,10 +11,7 @@ use rtools_engine::{
 };
 use serde_json::{json, Value};
 use std::{path::PathBuf, sync::Arc};
-use tokio::{
-    net::windows::named_pipe::ServerOptions,
-    sync::Mutex,
-};
+use tokio::{net::windows::named_pipe::ServerOptions, sync::Mutex};
 
 #[derive(Parser, Debug)]
 #[command(name = "rtools-engine", version)]
@@ -281,26 +278,36 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
             let conn = rpc_try!(db::open(&state.db_path));
             Ok(serde_json::to_value(rpc_try!(sync_manager::summary(&conn))).unwrap_or_default())
         }
-        "sync.pair" => {
-            Ok(serde_json::to_value(rpc_try!(
-                sync_manager::pair(
-                    &state.db_path,
-                    payload["server_url"].as_str().unwrap_or_default(),
-                    payload["pairing_code"].as_str().unwrap_or_default(),
-                    payload["device_name"].as_str().unwrap_or_default(),
-                )
-                .await
-            ))
-            .unwrap_or_default())
-        }
-        "sync.sync_now" => {
-            Ok(serde_json::to_value(rpc_try!(sync_manager::sync_now(&state.db_path).await))
-                .unwrap_or_default())
-        }
+        "sync.pair" => Ok(serde_json::to_value(rpc_try!(
+            sync_manager::pair(
+                &state.db_path,
+                payload["server_url"].as_str().unwrap_or_default(),
+                payload["pairing_code"].as_str().unwrap_or_default(),
+                payload["device_name"].as_str().unwrap_or_default(),
+            )
+            .await
+        ))
+        .unwrap_or_default()),
+        "sync.sync_now" => Ok(serde_json::to_value(rpc_try!(
+            sync_manager::sync_now(&state.db_path).await
+        ))
+        .unwrap_or_default()),
         "sync.logout" => {
             let conn = rpc_try!(db::open(&state.db_path));
-            Ok(serde_json::to_value(rpc_try!(sync_manager::logout(&conn)))
-                .unwrap_or_default())
+            Ok(serde_json::to_value(rpc_try!(sync_manager::logout(&conn))).unwrap_or_default())
+        }
+        "sync.restore_credentials" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            Ok(
+                serde_json::to_value(rpc_try!(sync_manager::restore_credentials(
+                    &conn,
+                    payload["server_url"].as_str().unwrap_or_default(),
+                    payload["device_id"].as_str().unwrap_or_default(),
+                    payload["device_name"].as_str().unwrap_or_default(),
+                    payload["token"].as_str().unwrap_or_default(),
+                )))
+                .unwrap_or_default(),
+            )
         }
         "devices.list" => {
             let conn = rpc_try!(db::open(&state.db_path));
@@ -353,14 +360,20 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
         }
         "autostart.get" => {
             let conn = rpc_try!(db::open(&state.db_path));
-            Ok(json!({"enabled":rpc_try!(db::get_setting(&conn,"autostart")).as_deref()==Some("true")}))
+            Ok(
+                json!({"enabled":rpc_try!(db::get_setting(&conn,"autostart")).as_deref()==Some("true")}),
+            )
         }
         "autostart.set" => {
             let conn = rpc_try!(db::open(&state.db_path));
             rpc_try!(db::set_setting(
                 &conn,
                 "autostart",
-                if payload["enabled"].as_bool().unwrap_or(false) {"true"} else {"false"}
+                if payload["enabled"].as_bool().unwrap_or(false) {
+                    "true"
+                } else {
+                    "false"
+                }
             ));
             Ok(json!({"ok":true}))
         }
@@ -381,39 +394,52 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
         "mcp.set_enabled" => {
             let enabled = payload["enabled"].as_bool().unwrap_or(false);
             let conn = rpc_try!(db::open(&state.db_path));
-            rpc_try!(db::set_setting(&conn,"mcp_enabled",if enabled{"true"}else{"false"}));
+            rpc_try!(db::set_setting(
+                &conn,
+                "mcp_enabled",
+                if enabled { "true" } else { "false" }
+            ));
             let token = rpc_try!(mcp::token_from_db(&conn));
             let mut guard = state.mcp.lock().await;
             if enabled && guard.is_none() {
                 match mcp::McpRuntime::start(state.db_path.clone(), 18765) {
                     Ok(runtime) => *guard = Some(runtime),
-                    Err(err) => return Ok(json!({"enabled":enabled,"running":false,"token":token,"port":18765,"error":err.to_string()})),
+                    Err(err) => {
+                        return Ok(
+                            json!({"enabled":enabled,"running":false,"token":token,"port":18765,"error":err.to_string()}),
+                        )
+                    }
                 }
             } else if !enabled {
                 *guard = None;
             }
-            Ok(json!({"enabled":enabled,"running":guard.is_some(),"token":token,"port":18765,"error":null}))
+            Ok(
+                json!({"enabled":enabled,"running":guard.is_some(),"token":token,"port":18765,"error":null}),
+            )
         }
         "mcp.rotate_token" => {
             let conn = rpc_try!(db::open(&state.db_path));
-            let mut bytes=[0u8;32];
-            rand::RngCore::fill_bytes(&mut rand::rng(),&mut bytes);
-            let token=hex::encode(bytes);
-            rpc_try!(db::set_setting(&conn,"mcp_token",&token));
-            Ok(json!({"enabled":rpc_try!(mcp::is_enabled(&conn)),"running":state.mcp.lock().await.is_some(),"token":token,"port":18765,"error":null}))
+            let mut bytes = [0u8; 32];
+            rand::RngCore::fill_bytes(&mut rand::rng(), &mut bytes);
+            let token = hex::encode(bytes);
+            rpc_try!(db::set_setting(&conn, "mcp_token", &token));
+            Ok(
+                json!({"enabled":rpc_try!(mcp::is_enabled(&conn)),"running":state.mcp.lock().await.is_some(),"token":token,"port":18765,"error":null}),
+            )
         }
-        "transfer.status" => Ok(serde_json::to_value(state.transfer.lock().await.status())
-            .unwrap_or_default()),
+        "transfer.status" => {
+            Ok(serde_json::to_value(state.transfer.lock().await.status()).unwrap_or_default())
+        }
         "transfer.start" => {
             let (receive, identity) = default_transfer_dirs(&state.data_dir);
-            Ok(serde_json::to_value(
-                rpc_try!(state.transfer.lock().await.start(receive, identity).await),
-            )
+            Ok(serde_json::to_value(rpc_try!(
+                state.transfer.lock().await.start(receive, identity).await
+            ))
             .unwrap_or_default())
         }
-        "transfer.stop" => Ok(serde_json::to_value(
-            rpc_try!(state.transfer.lock().await.stop().await),
-        )
+        "transfer.stop" => Ok(serde_json::to_value(rpc_try!(
+            state.transfer.lock().await.stop().await
+        ))
         .unwrap_or_default()),
         "transfer.devices" => Ok(
             serde_json::to_value(state.transfer.lock().await.devices().await).unwrap_or_default(),
@@ -457,17 +483,13 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
         )
         .unwrap_or_default()),
         "transfer.respond" => {
-            let ids: Vec<String> =
-                rpc_try!(serde_json::from_value(payload["file_ids"].clone()));
+            let ids: Vec<String> = rpc_try!(serde_json::from_value(payload["file_ids"].clone()));
             rpc_try!(
                 state
                     .transfer
                     .lock()
                     .await
-                    .respond_prepare(
-                        payload["session_id"].as_str().unwrap_or_default(),
-                        ids,
-                    )
+                    .respond_prepare(payload["session_id"].as_str().unwrap_or_default(), ids,)
                     .await
             );
             Ok(json!({"ok":true}))

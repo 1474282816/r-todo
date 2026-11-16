@@ -209,14 +209,11 @@ async fn events(State(state): State<AppState>, headers: HeaderMap) -> Result<Res
     authenticate(&state, &headers)?;
     let mut rx = state.events.subscribe();
     let stream = async_stream::stream! {
-        loop {
-            match rx.recv().await {
-                Ok(event) => {
-                    let payload = serde_json::to_string(&event).unwrap_or_default();
-                    yield Ok::<_, std::convert::Infallible>(axum::response::sse::Event::default().data(payload));
-                }
-                Err(_) => break,
-            }
+        while let Ok(event) = rx.recv().await {
+            let payload = serde_json::to_string(&event).unwrap_or_default();
+            yield Ok::<_, std::convert::Infallible>(
+                axum::response::sse::Event::default().data(payload),
+            );
         }
     };
     Ok(axum::response::Sse::new(stream).into_response())
