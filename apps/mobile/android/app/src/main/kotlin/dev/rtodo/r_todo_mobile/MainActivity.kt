@@ -1,16 +1,22 @@
 package dev.rtodo.r_todo_mobile
 
 import android.app.DownloadManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import dev.rtodo.r_todo_mobile.transfer.TransferForegroundService
 import dev.rtodo.r_todo_mobile.transfer.TransferPlugin
 import io.flutter.embedding.android.FlutterActivity
@@ -21,6 +27,7 @@ import java.io.File
 class MainActivity : FlutterActivity() {
 
     companion object {
+        private const val REQUEST_NOTIFICATIONS = 4102
         /** 点击常驻通知带过来的会话 fingerprint，Flutter 初始化后取走。 */
         @Volatile
         var pendingConversation: String? = null
@@ -71,7 +78,7 @@ class MainActivity : FlutterActivity() {
                     "showReminder" -> {
                         val title = call.argument<String>("title") ?: "rtools"
                         val text = call.argument<String>("text") ?: "任务提醒"
-                        TransferForegroundService.start(this, title, text)
+                        showTaskReminder(title, text)
                         result.success(true)
                     }
                     else -> result.notImplemented()
@@ -135,6 +142,47 @@ class MainActivity : FlutterActivity() {
                     result.error("chat_failed", e.message, null)
                 }
             }
+    }
+
+    private fun showTaskReminder(title: String, text: String) {
+        val channelId = "rtools_reminders"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    channelId,
+                    "任务提醒",
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    description = "rtools 待办提醒"
+                },
+            )
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(
+                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                REQUEST_NOTIFICATIONS,
+            )
+        }
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    this,
+                    title.hashCode(),
+                    Intent(this, MainActivity::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                ),
+            )
+            .build()
+        NotificationManagerCompat.from(this).notify(title.hashCode(), notification)
     }
 
     /** 只删 MediaStore 里的接收副本；发送方原始文件不在这个 URI 体系里。 */
