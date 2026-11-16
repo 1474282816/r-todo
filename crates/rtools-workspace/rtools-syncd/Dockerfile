@@ -1,4 +1,4 @@
-FROM rtools-syncd-builder:0.1.0 AS builder
+FROM rust:1.100-bookworm AS builder
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY rtools-engine/Cargo.toml ./rtools-engine/Cargo.toml
