@@ -1,7 +1,7 @@
 name: r_todo_mobile
 description: rtools Android / iPad 端
 publish_to: "none"
-version: 0.0.8+8
+version: 0.2.0+20
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

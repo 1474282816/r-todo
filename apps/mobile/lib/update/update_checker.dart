@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
-/// 从 gitee release 获取的最新版本信息
+/// 从 GitHub release 获取的最新版本信息
 class UpdateInfo {
   const UpdateInfo({
     required this.version,
@@ -17,7 +17,7 @@ class UpdateInfo {
   final String url;
   final String notes;
 
-  /// 解析 gitee `releases/latest` API 响应。
+  /// 解析 GitHub `releases/latest` API 响应。
   /// 版本取 tag_name（去 `v` 前缀），下载地址取 assets 里第一个 .apk。
   factory UpdateInfo.fromReleaseJson(Map<String, dynamic> json) {
     final tag = json['tag_name'] as String? ?? '';
@@ -52,19 +52,25 @@ bool isNewerVersion(String remote, String local) {
 
 /// 检测更新 + 下载 APK。
 ///
-/// 版本源：gitee 仓库最新 release（公开仓库匿名可访问，发版即自动生效）。
+/// 版本源：GitHub 仓库最新 release（公开仓库匿名可访问，发版即自动生效）。
 /// 安装由原生侧完成（MainActivity MethodChannel `r_todo/install`）。
 class UpdateChecker {
   UpdateChecker._();
 
   static const apiUrl =
-      'https://gitee.com/api/v5/repos/renrunqi/r-todo/releases/latest';
+      'https://api.github.com/repos/1474282816/r-todo/releases/latest';
 
   /// 拉取远端最新版本信息；失败或没有 APK 资产返回 null（静默，不打扰用户）。
   static Future<UpdateInfo?> fetch() async {
     try {
       final resp = await http
-          .get(Uri.parse(apiUrl))
+          .get(
+            Uri.parse(apiUrl),
+            headers: const {
+              'Accept': 'application/vnd.github+json',
+              'User-Agent': 'rtools-mobile-updater',
+            },
+          )
           .timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) return null;
       final json = jsonDecode(utf8.decode(resp.bodyBytes));
@@ -84,7 +90,7 @@ class UpdateChecker {
     void Function(double progress)? onProgress,
   }) async {
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/r-todo-update.apk');
+    final file = File('${dir.path}/rtools-update.apk');
     final request = http.Request('GET', Uri.parse(url));
     final client = http.Client();
     final streamed = await client.send(request);
