@@ -43,9 +43,18 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // 个人自用构建：可通过环境变量提供独立签名，否则回退到本机 debug key。
+            val storePath = System.getenv("RTOOLS_KEYSTORE")
+            if (!storePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.create("rtoolsRelease") {
+                    storeFile = file(storePath)
+                    storePassword = System.getenv("RTOOLS_STORE_PASSWORD")
+                    keyAlias = System.getenv("RTOOLS_KEY_ALIAS")
+                    keyPassword = System.getenv("RTOOLS_KEY_PASSWORD")
+                }
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 }

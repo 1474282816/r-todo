@@ -10,9 +10,9 @@ class TransferSettings {
     this.autoAcceptFavorites = true,
   });
 
-  static const String defaultAlias = 'r-todo';
+  static const String defaultAlias = 'rtools';
   static const int defaultPort = 53317;
-  static const String defaultReceiveDirName = 'r-todo';
+  static const String defaultReceiveDirName = 'rtools';
 
   final String alias;
   final int port;

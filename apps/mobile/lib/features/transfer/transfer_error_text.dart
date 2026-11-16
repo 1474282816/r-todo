@@ -6,7 +6,7 @@ String transferErrorText(String code, {String? message}) {
     case 'PORT_IN_USE':
       return '端口 53317 已被占用。可能官方 LocalSend 正在运行，或换一个端口再试。';
     case 'FIREWALL':
-      return '系统防火墙拦截了连接。请在防火墙设置中允许 r-todo 访问局域网。';
+      return '系统防火墙拦截了连接。请在防火墙设置中允许 rtools 访问局域网。';
     case 'MULTICAST_UNAVAILABLE':
       return '当前网络收不到局域网广播。请检查 Wi-Fi 是否开启了 AP 隔离，或改用手动 IP 连接。';
     case 'TLS':

@@ -13,6 +13,7 @@ public sealed class EngineProcessClient : IEngineClient
     private const int ProtocolVersion = 1;
     private const int MaxFrameSize = 16 * 1024 * 1024;
     private readonly SemaphoreSlim _connectLock = new(1, 1);
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> _pending = new();
     private readonly CancellationTokenSource _shutdown = new();
     private Process? _process;
@@ -22,6 +23,8 @@ public sealed class EngineProcessClient : IEngineClient
 
     public event EventHandler<TaskChangedEventArgs>? TasksChanged;
     public event EventHandler<ReminderDueEventArgs>? ReminderDue;
+    public event EventHandler<TransferEventEventArgs>? TransferEventReceived;
+    public event EventHandler? ChatChanged;
 
     public bool IsConnected => _pipe?.IsConnected == true;
 
@@ -155,6 +158,93 @@ public sealed class EngineProcessClient : IEngineClient
         await File.WriteAllLinesAsync(path, lines, cancellationToken);
     }
 
+    public async Task ExportTickTickCsvAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        var tasks = await ListTasksAsync(cancellationToken);
+        var lines = new List<string> { "Title,Content,Status,Completed Time,Start Date,Due Date,Priority" };
+        foreach (var task in tasks)
+        {
+            var status = task.IsCompleted ? "Completed" : "0";
+            lines.Add(string.Join(
+                ',',
+                Csv(task.Title),
+                Csv(""),
+                Csv(status),
+                Csv(task.CompletedAt?.ToString("O") ?? ""),
+                Csv(""),
+                Csv(task.RemindAt?.ToString("O") ?? ""),
+                Csv(task.Priority.ToString())));
+        }
+        await File.WriteAllLinesAsync(path, lines, cancellationToken);
+    }
+
+    public async Task<int> ImportTickTickCsvAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+    {
+        var lines = await File.ReadAllLinesAsync(path, cancellationToken);
+        if (lines.Length < 2)
+        {
+            return 0;
+        }
+        var headers = ParseCsvLine(lines[0]);
+        int Column(params string[] names)
+        {
+            for (var index = 0; index < headers.Count; index++)
+            {
+                if (names.Any(name =>
+                        headers[index].Equals(name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return index;
+                }
+            }
+            return -1;
+        }
+        var titleIndex = Column("Title", "标题");
+        var dueIndex = Column("Due Date", "到期时间");
+        var priorityIndex = Column("Priority", "优先级");
+        if (titleIndex < 0)
+        {
+            throw new InvalidDataException("CSV 缺少 Title 列");
+        }
+        var count = 0;
+        foreach (var line in lines.Skip(1))
+        {
+            var columns = ParseCsvLine(line);
+            if (titleIndex >= columns.Count ||
+                string.IsNullOrWhiteSpace(columns[titleIndex]))
+            {
+                continue;
+            }
+            var priority = priorityIndex >= 0 && priorityIndex < columns.Count
+                ? columns[priorityIndex].ToLowerInvariant() switch
+                {
+                    "high" or "高" or "3" => TaskPriority.High,
+                    "low" or "低" or "1" => TaskPriority.Low,
+                    _ => TaskPriority.Medium
+                }
+                : TaskPriority.Medium;
+            DateTimeOffset? due = null;
+            if (dueIndex >= 0 && dueIndex < columns.Count)
+            {
+                due = DateTimeOffset.TryParse(columns[dueIndex], out var parsed)
+                    ? parsed
+                    : null;
+            }
+            await CreateTaskAsync(
+                columns[titleIndex],
+                priority,
+                due,
+                15,
+                null,
+                cancellationToken);
+            count++;
+        }
+        return count;
+    }
+
     public async Task<SyncStatus> GetSyncStatusAsync(
         CancellationToken cancellationToken = default)
     {
@@ -267,6 +357,26 @@ public sealed class EngineProcessClient : IEngineClient
         CancellationToken cancellationToken = default)
         => ParseMcp(await CallAsync("mcp.rotate_token", new { }, cancellationToken));
 
+    public async Task<McpTemplates> GetMcpTemplatesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var status = await GetMcpStatusAsync(cancellationToken);
+        var token = status.Token ?? "";
+        const string url = "http://127.0.0.1:18765/mcp";
+        var bearer = $"Bearer {token}";
+        return new McpTemplates
+        {
+            ClaudeCode =
+                $"claude mcp add rtools --transport http {url} --header \"Authorization: {bearer}\"",
+            ClaudeDesktop =
+                $"{{\"mcpServers\":{{\"rtools\":{{\"url\":\"{url}\",\"headers\":{{\"Authorization\":\"{bearer}\"}}}}}}}}",
+            Codex =
+                $"[mcp_servers.rtools]\\ntype = \"http\"\\nurl = \"{url}\"\\nheaders = {{ Authorization = \"{bearer}\" }}",
+            OpenCode =
+                $"{{\"mcp\":{{\"rtools\":{{\"type\":\"http\",\"url\":\"{url}\",\"headers\":{{\"Authorization\":\"{bearer}\"}}}}}}}}"
+        };
+    }
+
     public async Task<TransferStatus> GetTransferStatusAsync(
         CancellationToken cancellationToken = default)
         => ParseTransfer(await CallAsync("transfer.status", new { }, cancellationToken));
@@ -278,6 +388,144 @@ public sealed class EngineProcessClient : IEngineClient
     public async Task<TransferStatus> StopTransferAsync(
         CancellationToken cancellationToken = default)
         => ParseTransfer(await CallAsync("transfer.stop", new { }, cancellationToken));
+
+    public async Task<IReadOnlyList<TransferDevice>> DiscoverTransferDevicesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await CallAsync("transfer.refresh", new { }, cancellationToken);
+        return await SendAsync<IReadOnlyList<TransferDevice>>(
+            "transfer.devices",
+            new { },
+            cancellationToken);
+    }
+
+    public async Task<TransferDevice?> AddManualTransferIpAsync(
+        string host,
+        int port,
+        CancellationToken cancellationToken = default)
+    {
+        var value = await CallAsync(
+            "transfer.add_manual_ip",
+            new { host, port },
+            cancellationToken);
+        return value.ValueKind == JsonValueKind.Null
+            ? null
+            : value.Deserialize<TransferDevice>(JsonOptions);
+    }
+
+    public Task UpdateTransferSettingsAsync(
+        string alias,
+        int port,
+        string receiveDir,
+        string pin,
+        bool autoAcceptFavorites,
+        CancellationToken cancellationToken = default)
+        => SendVoidAsync(
+            "transfer.settings",
+            new { alias, port, receive_dir = receiveDir, pin, auto_accept_favorites = autoAcceptFavorites },
+            cancellationToken);
+
+    public async Task<string> SendTransferFilesAsync(
+        IReadOnlyList<string> paths,
+        string fingerprint,
+        string? pin,
+        CancellationToken cancellationToken = default)
+    {
+        var value = await CallAsync(
+            "transfer.send",
+            new { paths, fingerprint, pin },
+            cancellationToken);
+        return value.GetProperty("session_id").GetString()
+            ?? throw new InvalidOperationException("Engine 未返回传输会话 ID");
+    }
+
+    public Task<IReadOnlyList<PendingIncoming>> GetPendingIncomingAsync(
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<PendingIncoming>>(
+            "transfer.pending",
+            new { },
+            cancellationToken);
+
+    public Task RespondIncomingAsync(
+        string sessionId,
+        IReadOnlyList<string> fileIds,
+        CancellationToken cancellationToken = default)
+        => SendVoidAsync(
+            "transfer.respond",
+            new { session_id = sessionId, file_ids = fileIds },
+            cancellationToken);
+
+    public Task RejectIncomingAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default)
+        => SendVoidAsync(
+            "transfer.reject",
+            new { session_id = sessionId },
+            cancellationToken);
+
+    public Task CancelTransferSessionAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default)
+        => SendVoidAsync(
+            "transfer.cancel",
+            new { session_id = sessionId },
+            cancellationToken);
+
+    public Task<IReadOnlyList<ChatConversation>> ListConversationsAsync(
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<ChatConversation>>(
+            "chat.list_conversations",
+            new { },
+            cancellationToken);
+
+    public Task<IReadOnlyList<ChatMessageItem>> ListMessagesAsync(
+        string conversationId,
+        CancellationToken cancellationToken = default)
+        => SendAsync<IReadOnlyList<ChatMessageItem>>(
+            "chat.list_messages",
+            new { conversation_id = conversationId },
+            cancellationToken);
+
+    public Task MarkConversationReadAsync(
+        string conversationId,
+        CancellationToken cancellationToken = default)
+        => SendVoidAsync(
+            "chat.mark_read",
+            new { conversation_id = conversationId },
+            cancellationToken);
+
+    public Task ClearConversationAsync(
+        string conversationId,
+        CancellationToken cancellationToken = default)
+        => SendVoidAsync(
+            "chat.clear",
+            new { conversation_id = conversationId },
+            cancellationToken);
+
+    public Task SendChatTextAsync(
+        string fingerprint,
+        ChatMessageItem message,
+        CancellationToken cancellationToken = default)
+        => SendVoidAsync(
+            "chat.send_text",
+            new { fingerprint, message },
+            cancellationToken);
+
+    public async Task<bool> IsChatTrustedAsync(
+        string fingerprint,
+        CancellationToken cancellationToken = default)
+    {
+        var value = await CallAsync(
+            "chat.trusted",
+            new { fingerprint },
+            cancellationToken);
+        return value.GetProperty("trusted").GetBoolean();
+    }
+
+    public Task TrustChatPeerAsync(
+        string fingerprint,
+        CancellationToken cancellationToken = default)
+        => SendVoidAsync("chat.trust", new { fingerprint }, cancellationToken);
 
     private Process StartEngineProcess()
     {
@@ -406,9 +654,17 @@ public sealed class EngineProcessClient : IEngineClient
         System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(
             header,
             (uint)data.Length);
-        await _pipe.WriteAsync(header, cancellationToken);
-        await _pipe.WriteAsync(data, cancellationToken);
-        await _pipe.FlushAsync(cancellationToken);
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            await _pipe.WriteAsync(header, cancellationToken);
+            await _pipe.WriteAsync(data, cancellationToken);
+            await _pipe.FlushAsync(cancellationToken);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     private async Task ReadLoopAsync(CancellationToken cancellationToken)
@@ -482,6 +738,19 @@ public sealed class EngineProcessClient : IEngineClient
                     Title = payload.GetProperty("title").GetString() ?? ""
                 });
         }
+        else if (name is "transfer.event" or "transfer.incoming")
+        {
+            TransferEventReceived?.Invoke(
+                this,
+                new TransferEventEventArgs
+                {
+                    Payload = root.GetProperty("payload").Clone()
+                });
+        }
+        else if (name == "chat.changed")
+        {
+            ChatChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private static object ToWire(TaskItem task) => new
@@ -513,8 +782,51 @@ public sealed class EngineProcessClient : IEngineClient
     {
         Running = value.GetProperty("running").GetBoolean(),
         Port = value.TryGetProperty("port", out var port) ? port.GetInt32() : 53317,
+        Alias = NullableString(value, "alias") ?? "rtools",
+        Fingerprint = NullableString(value, "fingerprint") ?? "",
+        ReceiveDir = NullableString(value, "receive_dir") ?? "",
+        PinConfigured = value.TryGetProperty("pin_configured", out var pin) && pin.GetBoolean(),
+        AutoAcceptFavorites = value.TryGetProperty("auto_accept_favorites", out var auto) &&
+            auto.GetBoolean(),
         Error = NullableString(value, "error")
     };
+
+    private static List<string> ParseCsvLine(string line)
+    {
+        var values = new List<string>();
+        var current = new StringBuilder();
+        var quoted = false;
+        for (var index = 0; index < line.Length; index++)
+        {
+            var ch = line[index];
+            if (ch == '"')
+            {
+                if (quoted && index + 1 < line.Length && line[index + 1] == '"')
+                {
+                    current.Append('"');
+                    index++;
+                }
+                else
+                {
+                    quoted = !quoted;
+                }
+            }
+            else if (ch == ',' && !quoted)
+            {
+                values.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(ch);
+            }
+        }
+        values.Add(current.ToString());
+        return values;
+    }
+
+    private static string Csv(string value)
+        => $"\"{value.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
 
     private static string? NullableString(JsonElement value, string property)
     {
@@ -570,6 +882,7 @@ public sealed class EngineProcessClient : IEngineClient
         _process?.Dispose();
         _shutdown.Dispose();
         _connectLock.Dispose();
+        _writeLock.Dispose();
     }
 }
 

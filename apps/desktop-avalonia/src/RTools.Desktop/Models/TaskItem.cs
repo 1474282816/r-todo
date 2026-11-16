@@ -27,6 +27,23 @@ public sealed partial class TaskItem : ObservableObject
     [ObservableProperty]
     private DateTimeOffset? _remindAt;
 
+    public string RemindAtText
+    {
+        get => RemindAt?.LocalDateTime.ToString("yyyy-MM-dd HH:mm") ?? "";
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                RemindAt = null;
+            }
+            else if (DateTimeOffset.TryParse(value, out var parsed))
+            {
+                RemindAt = parsed;
+            }
+            OnPropertyChanged();
+        }
+    }
+
     [ObservableProperty]
     private int _remindOffsetMinutes = 15;
 

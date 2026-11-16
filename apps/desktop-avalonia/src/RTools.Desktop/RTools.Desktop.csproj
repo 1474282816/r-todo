@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\rtools.ico</ApplicationIcon>
+    <Version>0.2.0</Version>
+    <RootNamespace>RTools.Desktop</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -29,9 +31,14 @@
 
   <Target Name="CopyRustEngine" BeforeTargets="Build">
     <ItemGroup>
-      <RustEngineFile Include="$(MSBuildProjectDirectory)\..\..\..\..\crates\rtools-workspace\target\debug\rtools-engine.exe" />
+      <RustEngineFile Include="$(MSBuildProjectDirectory)\..\..\..\..\crates\rtools-workspace\target\debug\rtools-engine.exe"
+                      Condition="'$(Configuration)' == 'Debug'" />
+      <RustEngineFile Include="$(MSBuildProjectDirectory)\..\..\..\..\crates\rtools-workspace\target\release\rtools-engine.exe"
+                      Condition="'$(Configuration)' == 'Release'" />
     </ItemGroup>
-    <Copy SourceFiles="@(RustEngineFile)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true"
+    <Copy SourceFiles="@(RustEngineFile)"
+          DestinationFiles="@(RustEngineFile->'$(OutputPath)rtools-engine.exe')"
+          SkipUnchangedFiles="true"
           Condition="Exists('%(RustEngineFile.FullPath)')" />
   </Target>
 </Project>

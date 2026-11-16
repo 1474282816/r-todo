@@ -116,7 +116,7 @@ class _TransferViewState extends ConsumerState<TransferView> {
             const Gap(16),
           ],
           Text(
-            '接收的文件保存在「下载/r-todo」，传输期间会显示通知。',
+            '接收的文件保存在「下载/rtools」，传输期间会显示通知。',
             style: TextStyle(
               fontSize: 11,
               height: 1.5,
@@ -526,7 +526,7 @@ class _SavedBanner extends StatelessWidget {
           const Gap(8),
           Expanded(
             child: Text(
-              '已保存到「下载/r-todo/$fileName」',
+              '已保存到「下载/rtools/$fileName」',
               style: const TextStyle(
                 fontSize: 11,
                 height: 1.5,
@@ -572,7 +572,7 @@ class _IncomingDialog extends StatelessWidget {
             ),
           const Gap(10),
           Text(
-            '共 ${_formatSize(event.totalBytes)}，接收后保存到「下载/r-todo」。',
+            '共 ${_formatSize(event.totalBytes)}，接收后保存到「下载/rtools」。',
             style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
           ),
         ],

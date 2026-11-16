@@ -18,7 +18,7 @@ void main() {
       // Q36：已确认设备自动收文件，默认开。
       expect(settings.autoAcceptFavorites, isTrue);
       expect(settings.pin, isNull);
-      expect(settings.receiveDirName, 'r-todo');
+      expect(settings.receiveDirName, 'rtools');
     });
 
     test('保存后可原样读回', () async {

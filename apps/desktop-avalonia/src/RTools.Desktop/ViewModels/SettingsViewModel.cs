@@ -57,10 +57,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool _mcpRunning;
 
     [ObservableProperty]
+    private string _mcpTemplates = "";
+
+    [ObservableProperty]
     private bool _transferRunning;
 
     [ObservableProperty]
-    private string _version = "0.1.0";
+    private string _version = "0.2.0";
 
     [ObservableProperty]
     private string? _statusMessage;
@@ -114,6 +117,13 @@ public sealed partial class SettingsViewModel : ObservableObject
             ApplySync(sync);
             var mcp = await _engine.GetMcpStatusAsync(cancellationToken);
             ApplyMcp(mcp);
+            var templates = await _engine.GetMcpTemplatesAsync(cancellationToken);
+            McpTemplates = string.Join(
+                Environment.NewLine,
+                $"Claude Code: {templates.ClaudeCode}",
+                $"Claude Desktop: {templates.ClaudeDesktop}",
+                $"Codex: {templates.Codex}",
+                $"OpenCode: {templates.OpenCode}");
             var transfer = await _engine.GetTransferStatusAsync(cancellationToken);
             TransferRunning = transfer.Running;
             Devices = new ObservableCollection<DeviceItem>(
@@ -274,6 +284,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             ErrorMessage = null;
             ApplyMcp(await _engine.RotateMcpTokenAsync());
+            var templates = await _engine.GetMcpTemplatesAsync();
+            McpTemplates = string.Join(
+                Environment.NewLine,
+                $"Claude Code: {templates.ClaudeCode}",
+                $"Claude Desktop: {templates.ClaudeDesktop}",
+                $"Codex: {templates.Codex}",
+                $"OpenCode: {templates.OpenCode}");
             StatusMessage = "MCP token 已重置";
         }
         catch (Exception ex)

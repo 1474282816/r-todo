@@ -80,7 +80,7 @@ class MainActivity : FlutterActivity() {
                         "showNotification" -> {
                             TransferForegroundService.start(
                                 this,
-                                call.argument<String>("title") ?: "r-todo",
+                                call.argument<String>("title") ?: "rtools",
                                 call.argument<String>("text") ?: "",
                                 call.argument<String>("conversation"),
                             )
@@ -157,14 +157,14 @@ class MainActivity : FlutterActivity() {
         val values = ContentValues().apply {
             put(
                 MediaStore.Images.Media.DISPLAY_NAME,
-                name ?: "r-todo-${System.currentTimeMillis()}.jpg",
+                name ?: "rtools-${System.currentTimeMillis()}.jpg",
             )
             put(
                 MediaStore.Images.Media.MIME_TYPE,
                 resolver.getType(uri) ?: "image/jpeg",
             )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/r-todo")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/rtools")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
         }

@@ -151,7 +151,7 @@ class _TransferSettingsPageState extends ConsumerState<TransferSettingsPage> {
           ),
           const Gap(6),
           const Text(
-            '接收的文件保存到系统「下载/r-todo」。传输中的临时文件放在应用缓存里，结束后自动清理。',
+            '接收的文件保存到系统「下载/rtools」。传输中的临时文件放在应用缓存里，结束后自动清理。',
             style: TextStyle(fontSize: 11, height: 1.6, color: Color(0xFF9CA3AF)),
           ),
         ],

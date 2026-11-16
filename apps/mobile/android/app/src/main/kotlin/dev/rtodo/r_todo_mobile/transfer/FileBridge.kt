@@ -18,13 +18,13 @@ import java.util.concurrent.TimeUnit
  *
  * 约定：
  * - 发送：content:// → cacheDir/transfer/outbox/<uuid>-<name>，把**普通文件路径**交给 Rust
- * - 接收：Rust 写 cacheDir/transfer/inbox/<fileId>，本类再复制到 Downloads/r-todo
+ * - 接收：Rust 写 cacheDir/transfer/inbox/<fileId>，本类再复制到 Downloads/rtools
  */
 class FileBridge(private val context: Context) {
 
     companion object {
         private const val TAG = "RtodoFileBridge"
-        const val RECEIVE_DIR_NAME = "r-todo"
+        const val RECEIVE_DIR_NAME = "rtools"
         private const val MAX_FILE_NAME = 120
         private val STALE_MS = TimeUnit.HOURS.toMillis(24)
     }
@@ -64,7 +64,7 @@ class FileBridge(private val context: Context) {
         }
     }
 
-    /** 写入系统下载目录 `Downloads/r-todo`，返回 `{uri, displayName}`。 */
+    /** 写入系统下载目录 `Downloads/rtools`，返回 `{uri, displayName}`。 */
     fun saveToDownloads(tempPath: String, fileName: String, mime: String?): Map<String, String> {
         val source = File(tempPath)
         if (!source.exists()) throw IOException("临时文件不存在: $tempPath")

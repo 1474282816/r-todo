@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
-use rtools_domain::{Priority, Task, TaskDraft, TaskPatch};
+use rtools_domain::{next_occurrence, Priority, Task, TaskDraft, TaskPatch};
 use rusqlite::Connection;
 use uuid::Uuid;
 
@@ -48,6 +48,8 @@ impl<'a> TaskService<'a> {
         Ok(task)
     }
 
+    /// 编辑/删除/完成都会刷新 reminder 表，这里保证同一事务语义下的提醒原子更新。
+
     pub fn update(&self, id: &str, patch: TaskPatch) -> Result<Task> {
         Ok(db::patch_task(self.conn, id, patch)?)
     }
@@ -58,6 +60,38 @@ impl<'a> TaskService<'a> {
             ..Default::default()
         };
         self.update(id, patch)
+    }
+
+    /// 完成重复任务时创建下一次实例。返回 `(完成后的任务, 下一次实例)`。
+    pub fn complete_and_roll(&self, id: &str, completed: bool) -> Result<(Task, Option<Task>)> {
+        let before = db::get_task(self.conn, id)?.context("task not found")?;
+        let updated = self.complete(id, completed)?;
+        if !completed || before.completed_at.is_some() {
+            return Ok((updated, None));
+        }
+        let Some(rule) = updated.repeat_rule.as_deref() else {
+            return Ok((updated, None));
+        };
+        let base = updated.remind_at.unwrap_or_else(Utc::now);
+        let Some(next_at) = next_occurrence(rule, base) else {
+            return Ok((updated, None));
+        };
+        let task = Task {
+            id: Uuid::new_v4().simple().to_string(),
+            title: updated.title.clone(),
+            priority: updated.priority,
+            remind_at: updated.remind_at.map(|_| next_at),
+            remind_offset_min: updated.remind_offset_min,
+            repeat_rule: updated.repeat_rule.clone(),
+            sort_order: updated.sort_order,
+            completed_at: None,
+            deleted_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            revision: 0,
+        };
+        db::upsert_task(self.conn, &task)?;
+        Ok((updated, Some(task)))
     }
 
     pub fn delete(&self, id: &str) -> Result<Task> {

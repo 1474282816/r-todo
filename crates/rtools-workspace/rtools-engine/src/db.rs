@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use rtools_domain::{Task, TaskPatch};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
@@ -67,6 +68,45 @@ pub fn migrate(conn: &Connection) -> Result<()> {
             due_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(due_at);
+
+        CREATE TABLE IF NOT EXISTS conversations (
+            id TEXT PRIMARY KEY NOT NULL,
+            alias TEXT NOT NULL,
+            last_message_at INTEGER NOT NULL DEFAULT 0,
+            unread INTEGER NOT NULL DEFAULT 0,
+            pinned INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS messages (
+            id TEXT PRIMARY KEY NOT NULL,
+            conversation_id TEXT NOT NULL,
+            sender TEXT NOT NULL,
+            sender_alias TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            body TEXT NOT NULL,
+            file_path TEXT,
+            file_size INTEGER,
+            preview TEXT,
+            forwarded_from TEXT,
+            created_at INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            direction TEXT NOT NULL DEFAULT 'receive',
+            progress REAL NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_messages_conversation
+            ON messages(conversation_id, created_at);
+        CREATE TABLE IF NOT EXISTS trusted_peers (
+            fingerprint TEXT PRIMARY KEY NOT NULL,
+            trusted_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS transfer_outbox (
+            id TEXT PRIMARY KEY NOT NULL,
+            target TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at INTEGER NOT NULL
+        );
         "#,
     )?;
     let version: String = conn.query_row(
@@ -294,6 +334,176 @@ pub fn set_sync_value(conn: &Connection, key: &str, value: &str) -> Result<()> {
 
 pub fn pending_count(conn: &Connection) -> Result<i64> {
     Ok(conn.query_row("SELECT COUNT(*) FROM outbox", [], |r| r.get(0))?)
+}
+
+#[derive(Debug, Clone)]
+pub struct DueReminder {
+    pub task_id: String,
+    pub title: String,
+    pub due_at: String,
+}
+
+/// 删除启动前已经过期的提醒，避免重启后补弹历史通知。
+pub fn discard_overdue_reminders(conn: &Connection, now: DateTime<Utc>) -> Result<usize> {
+    Ok(conn.execute(
+        "DELETE FROM reminders WHERE due_at <= ?1",
+        [now.to_rfc3339()],
+    )?)
+}
+
+/// 原子取出一条到期提醒并删除，保证多个客户端连接不会重复弹窗。
+pub fn take_due_reminder(conn: &Connection, now: DateTime<Utc>) -> Result<Option<DueReminder>> {
+    let found = conn
+        .query_row(
+            "SELECT r.task_id,t.title,r.due_at FROM reminders r
+             JOIN tasks t ON t.id=r.task_id
+             WHERE r.due_at <= ?1 AND t.deleted_at IS NULL AND t.completed_at IS NULL
+             ORDER BY r.due_at ASC LIMIT 1",
+            [now.to_rfc3339()],
+            |row| {
+                Ok(DueReminder {
+                    task_id: row.get(0)?,
+                    title: row.get(1)?,
+                    due_at: row.get(2)?,
+                })
+            },
+        )
+        .optional()?;
+    if let Some(reminder) = found.as_ref() {
+        conn.execute(
+            "DELETE FROM reminders WHERE task_id=?1",
+            [&reminder.task_id],
+        )?;
+    }
+    Ok(found)
+}
+
+pub fn list_conversations(conn: &Connection) -> Result<Vec<serde_json::Value>> {
+    let mut stmt = conn.prepare(
+        "SELECT id,alias,last_message_at,unread,pinned FROM conversations
+         ORDER BY pinned DESC,last_message_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(serde_json::json!({
+            "id": row.get::<_, String>(0)?,
+            "alias": row.get::<_, String>(1)?,
+            "last_message_at": row.get::<_, i64>(2)?,
+            "unread": row.get::<_, i64>(3)?,
+            "pinned": row.get::<_, i64>(4)? != 0
+        }))
+    })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub fn list_messages(conn: &Connection, conversation_id: &str) -> Result<Vec<serde_json::Value>> {
+    let mut stmt = conn.prepare(
+        "SELECT id,conversation_id,sender,sender_alias,kind,body,file_path,
+                file_size,preview,forwarded_from,created_at,status,direction,progress
+         FROM messages WHERE conversation_id=?1 ORDER BY created_at ASC LIMIT 500",
+    )?;
+    let rows = stmt.query_map([conversation_id], |row| {
+        Ok(serde_json::json!({
+            "id": row.get::<_, String>(0)?,
+            "conversation_id": row.get::<_, String>(1)?,
+            "sender": row.get::<_, String>(2)?,
+            "sender_alias": row.get::<_, String>(3)?,
+            "kind": row.get::<_, String>(4)?,
+            "body": row.get::<_, String>(5)?,
+            "file_path": row.get::<_, Option<String>>(6)?,
+            "file_size": row.get::<_, Option<i64>>(7)?,
+            "preview": row.get::<_, Option<String>>(8)?,
+            "forwarded_from": row.get::<_, Option<String>>(9)?,
+            "created_at": row.get::<_, i64>(10)?,
+            "status": row.get::<_, String>(11)?,
+            "direction": row.get::<_, String>(12)?,
+            "progress": row.get::<_, f64>(13)?
+        }))
+    })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub fn save_chat_message(
+    conn: &Connection,
+    message: &rtodo_transfer_core::ChatMessage,
+    direction: &str,
+) -> Result<()> {
+    let kind = serde_json::to_value(message.kind)?
+        .as_str()
+        .unwrap_or("text")
+        .to_string();
+    let status = serde_json::to_value(message.status)?
+        .as_str()
+        .unwrap_or("sent")
+        .to_string();
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "INSERT OR REPLACE INTO messages(
+            id,conversation_id,sender,sender_alias,kind,body,file_path,file_size,
+            preview,forwarded_from,created_at,status,direction,progress)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,0)",
+        params![
+            message.id,
+            message.conversation_id,
+            message.sender,
+            message.sender_alias,
+            kind,
+            message.body,
+            message.file_path,
+            message.file_size.map(|value| value as i64),
+            message.preview,
+            message.forwarded_from,
+            message.created_at,
+            status,
+            direction
+        ],
+    )?;
+    tx.execute(
+        "INSERT INTO conversations(id,alias,last_message_at,unread,pinned)
+         VALUES(?1,?2,?3,?4,0)
+         ON CONFLICT(id) DO UPDATE SET alias=excluded.alias,
+         last_message_at=MAX(last_message_at,excluded.last_message_at),
+         unread=unread+excluded.unread",
+        params![
+            message.conversation_id,
+            message.sender_alias,
+            message.created_at,
+            i64::from(direction == "receive")
+        ],
+    )?;
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn mark_conversation_read(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("UPDATE conversations SET unread=0 WHERE id=?1", [id])?;
+    Ok(())
+}
+
+pub fn clear_conversation(conn: &Connection, id: &str) -> Result<()> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM messages WHERE conversation_id=?1", [id])?;
+    tx.execute("DELETE FROM conversations WHERE id=?1", [id])?;
+    tx.commit()?;
+    Ok(())
+}
+
+pub fn is_trusted_peer(conn: &Connection, fingerprint: &str) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM trusted_peers WHERE fingerprint=?1)",
+        [fingerprint.to_ascii_uppercase()],
+        |row| row.get::<_, i64>(0),
+    )? != 0)
+}
+
+pub fn trust_peer(conn: &Connection, fingerprint: &str) -> Result<()> {
+    conn.execute(
+        "INSERT OR IGNORE INTO trusted_peers(fingerprint,trusted_at) VALUES(?1,?2)",
+        params![
+            fingerprint.to_ascii_uppercase(),
+            Utc::now().timestamp_millis()
+        ],
+    )?;
+    Ok(())
 }
 
 pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {

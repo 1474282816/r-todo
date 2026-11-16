@@ -281,6 +281,93 @@ pub fn sort_active(tasks: &mut [Task]) {
     });
 }
 
+/// 根据当前支持的 RRULE 子集计算下一次实例。
+///
+/// 桌面编辑器和历史数据使用 DAILY/WEEKLY/MONTHLY、INTERVAL、BYDAY、
+/// BYMONTHDAY。其余 RFC 5545 属性会被忽略，避免把未知规则误判成一次性任务。
+pub fn next_occurrence(rule: &str, base: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    use chrono::{Datelike, Duration, NaiveTime, TimeZone, Timelike, Weekday};
+    use std::collections::HashSet;
+
+    let fields: std::collections::HashMap<_, _> = rule
+        .split(';')
+        .filter_map(|part| part.split_once('='))
+        .map(|(key, value)| {
+            (
+                key.trim().to_ascii_uppercase(),
+                value.trim().to_ascii_uppercase(),
+            )
+        })
+        .collect();
+    let frequency = fields.get("FREQ")?.as_str();
+    let interval = fields
+        .get("INTERVAL")
+        .and_then(|value| value.parse::<i32>().ok())
+        .unwrap_or(1)
+        .max(1) as i64;
+    let by_days: HashSet<Weekday> = fields
+        .get("BYDAY")
+        .map(|value| {
+            value
+                .split(',')
+                .filter_map(|day| {
+                    match day
+                        .trim()
+                        .trim_start_matches(['+', '-', '1', '2', '3', '4', '5'])
+                    {
+                        "MO" => Some(Weekday::Mon),
+                        "TU" => Some(Weekday::Tue),
+                        "WE" => Some(Weekday::Wed),
+                        "TH" => Some(Weekday::Thu),
+                        "FR" => Some(Weekday::Fri),
+                        "SA" => Some(Weekday::Sat),
+                        "SU" => Some(Weekday::Sun),
+                        _ => None,
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let by_month_day = fields
+        .get("BYMONTHDAY")
+        .and_then(|value| value.split(',').next())
+        .and_then(|value| value.parse::<u32>().ok());
+    let base_day = base.date_naive();
+    let base_week = base_day.checked_sub_signed(Duration::days(
+        base_day.weekday().num_days_from_monday() as i64,
+    ))?;
+    for offset in 1..=(366 * 10) {
+        let day = base_day.checked_add_signed(Duration::days(offset))?;
+        let valid = match frequency {
+            "DAILY" => offset % interval == 0,
+            "WEEKLY" => {
+                let current_week = day.checked_sub_signed(Duration::days(
+                    day.weekday().num_days_from_monday() as i64,
+                ))?;
+                let weeks = (current_week - base_week).num_days() / 7;
+                let interval_ok = weeks >= 0 && weeks % interval == 0;
+                let day_ok = by_days.is_empty() || by_days.contains(&day.weekday());
+                interval_ok && day_ok
+            }
+            "MONTHLY" => {
+                let months = (day.year() - base_day.year()) * 12 + day.month0() as i32
+                    - base_day.month0() as i32;
+                let interval_ok = months >= 0 && (months as i64) % interval == 0;
+                let wanted = by_month_day.unwrap_or(base_day.day());
+                interval_ok && day.day() == wanted
+            }
+            _ => return None,
+        };
+        if valid {
+            let time = NaiveTime::from_hms_opt(base.hour(), base.minute(), base.second())?;
+            return Utc
+                .from_utc_datetime(&day.and_time(time))
+                .with_nanosecond(base.nanosecond());
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,5 +410,19 @@ mod tests {
         let tasks = parse_rtodo_json(json).unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].title, "测试");
+    }
+
+    #[test]
+    fn advances_daily_and_weekly_rules() {
+        use chrono::TimeZone;
+        let base = Utc.with_ymd_and_hms(2026, 11, 16, 9, 30, 0).unwrap();
+        assert_eq!(
+            next_occurrence("FREQ=DAILY;INTERVAL=1", base),
+            Some(Utc.with_ymd_and_hms(2026, 11, 17, 9, 30, 0).unwrap())
+        );
+        assert_eq!(
+            next_occurrence("FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE,FR", base),
+            Some(Utc.with_ymd_and_hms(2026, 11, 18, 9, 30, 0).unwrap())
+        );
     }
 }

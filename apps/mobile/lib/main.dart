@@ -59,7 +59,7 @@ class _RTodoAppState extends ConsumerState<RTodoApp> {
         : FTheme.neutral.light.touch;
 
     return MaterialApp(
-      title: 'r-todo',
+      title: 'rtools',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(brightness: brightness),
       builder: (context, child) => FTheme(

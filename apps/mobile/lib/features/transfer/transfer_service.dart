@@ -415,7 +415,7 @@ class TransferController extends ChangeNotifier {
       runtime = TransferRuntime.running;
       // 会话式互传：开关打开期间常驻前台服务，后台也能收消息（Q30/Q38）。
       await _platform.startForeground(
-        title: 'r-todo 互传',
+        title: 'rtools 互传',
         text: '正在监听消息（划掉 App 后不再接收）',
       );
     } catch (error) {
@@ -646,7 +646,7 @@ class TransferController extends ChangeNotifier {
           // 应用可能在后台：先挂个通知提醒用户回来确认。
           await _platform.startForeground(
             title: '收到文件',
-            text: '来自 ${event.device.alias}，打开 r-todo 确认接收',
+            text: '来自 ${event.device.alias}，打开 rtools 确认接收',
           );
         }
       case TransferProgress(
@@ -723,7 +723,7 @@ class TransferController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 接收完成后由 Kotlin 写入 `Downloads/r-todo`，再清掉 cache 副本。
+  /// 接收完成后由 Kotlin 写入 `Downloads/rtools`，再清掉 cache 副本。
   Future<void> _saveReceived(
     String sessionId,
     String fileId,
@@ -826,7 +826,7 @@ class TransferController extends ChangeNotifier {
     final busy = tasks.any((task) => !task.done) || incoming.isNotEmpty;
     if (!busy) {
       await _platform.startForeground(
-        title: 'r-todo 互传',
+        title: 'rtools 互传',
         text: '正在监听消息（划掉 App 后不再接收）',
       );
     }

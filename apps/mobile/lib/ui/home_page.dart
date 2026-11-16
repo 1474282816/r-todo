@@ -45,7 +45,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
       builder: (ctx) => AlertDialog(
         title: const Text('发现新版本'),
         content: Text(
-            'R待办 v${info.version} 已发布${info.notes.isNotEmpty ? '\n\n${info.notes}' : ''}\n\n是否下载更新？'),
+            'rtools v${info.version} 已发布${info.notes.isNotEmpty ? '\n\n${info.notes}' : ''}\n\n是否下载更新？'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -109,7 +109,7 @@ class _HomeViewState extends ConsumerState<HomeView> {
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('需要安装权限'),
-            content: const Text('请允许“R待办”安装未知来源应用，然后重新下载安装。'),
+            content: const Text('请允许“rtools”安装未知来源应用，然后重新下载安装。'),
             actions: [
               TextButton(
                   onPressed: () => Navigator.pop(ctx, false),

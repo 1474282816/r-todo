@@ -20,10 +20,11 @@
             BorderBrush="#22FFFFFF"
             BorderThickness="1"
             BoxShadow="0 12 36 0 #66000000">
-        <Grid RowDefinitions="40,72,*,Auto">
+        <Grid RowDefinitions="40,50,*,Auto">
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto"
                   Background="Transparent"
-                  PointerPressed="OnTitleBarPointerPressed">
+                  PointerPressed="OnTitleBarPointerPressed"
+                  PointerReleased="OnTitleBarPointerReleased">
                 <TextBlock Grid.Column="0"
                            Margin="16,0,0,0"
                            VerticalAlignment="Center"
@@ -38,7 +39,7 @@
                 <Button Grid.Column="2"
                         Classes="toolbar"
                         Command="{Binding OpenTransferCommand}"
-                        Content="互传"
+                        Content="传输"
                         ToolTip.Tip="局域网互传" />
                 <Button Grid.Column="3"
                         Classes="toolbar"
@@ -46,7 +47,7 @@
                         Content="设置" />
             </Grid>
 
-            <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto" Margin="12,8,12,8">
+            <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto" Margin="12,6,12,6">
                 <TextBox Grid.Column="0"
                          PlaceholderText="添加任务..."
                          Text="{Binding NewTaskTitle, Mode=TwoWay}"
@@ -72,7 +73,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="models:TaskItem">
                                     <Border Classes="taskRow">
-                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                                             <Button Grid.Column="0"
                                                     Classes="check"
                                                     Command="{Binding $parent[Window].DataContext.ToggleCompleteCommand}"
@@ -93,14 +94,20 @@
                                             </StackPanel>
                                             <Button Grid.Column="2"
                                                     Classes="taskAction"
+                                                    Command="{Binding $parent[Window].DataContext.ReorderTaskCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    Content="↑"
+                                                    ToolTip.Tip="上移一位" />
+                                            <Button Grid.Column="3"
+                                                    Classes="taskAction"
                                                     Command="{Binding $parent[Window].DataContext.EditTaskCommand}"
                                                     CommandParameter="{Binding}"
-                                                    Content="编辑" />
-                                            <Button Grid.Column="3"
+                                                    Content="改" />
+                                            <Button Grid.Column="4"
                                                     Classes="taskAction"
                                                     Command="{Binding $parent[Window].DataContext.DeleteTaskCommand}"
                                                     CommandParameter="{Binding}"
-                                                    Content="删除" />
+                                                    Content="删" />
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -262,6 +269,11 @@
                                    FontFamily="Consolas"
                                    TextWrapping="Wrap"
                                    FontSize="10" />
+                        <TextBlock Text="{Binding McpTemplates}"
+                                   FontFamily="Consolas"
+                                   TextWrapping="Wrap"
+                                   FontSize="9"
+                                   Foreground="#777" />
                         <Button Command="{Binding RotateMcpTokenCommand}"
                                 Content="重置 MCP token" />
                         <Separator />
@@ -273,9 +285,15 @@
                                 Content="打开互传窗口" />
                         <Separator />
                         <TextBlock Text="数据" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Version, StringFormat='版本 {0}'}"
+                                   FontSize="10"
+                                   Foreground="#777" />
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Click="OnImportJson" Content="导入待办 JSON" />
                             <Button Click="OnExportJson" Content="导出 JSON" />
+                            <Button Click="OnImportCsv" Content="导入 TickTick CSV" />
+                            <Button Click="OnExportCsv" Content="导出 CSV" />
+                            <Button Click="OnExportIcal" Content="导出 iCalendar" />
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
@@ -307,7 +325,62 @@
                             Command="{Binding CloseMonthCommand}"
                             Content="关闭" />
                 </Grid>
-                <Calendar Grid.Row="1" Margin="0,12" />
+                <Grid Grid.Row="1" RowDefinitions="Auto,*" Margin="0,12">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <Button Command="{Binding PreviousMonthCommand}" Content="上个月" />
+                        <TextBlock Grid.Column="1"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Text="{Binding MonthTitle}" />
+                        <Button Grid.Column="2"
+                                Command="{Binding NextMonthCommand}"
+                                Content="下个月" />
+                    </Grid>
+                    <Grid Grid.Row="1" RowDefinitions="Auto,*">
+                        <UniformGrid Columns="7" Margin="0,10,0,4">
+                            <TextBlock Text="日" HorizontalAlignment="Center" Foreground="#777" />
+                            <TextBlock Text="一" HorizontalAlignment="Center" Foreground="#777" />
+                            <TextBlock Text="二" HorizontalAlignment="Center" Foreground="#777" />
+                            <TextBlock Text="三" HorizontalAlignment="Center" Foreground="#777" />
+                            <TextBlock Text="四" HorizontalAlignment="Center" Foreground="#777" />
+                            <TextBlock Text="五" HorizontalAlignment="Center" Foreground="#777" />
+                            <TextBlock Text="六" HorizontalAlignment="Center" Foreground="#777" />
+                        </UniformGrid>
+                        <ScrollViewer Grid.Row="1">
+                        <ItemsControl ItemsSource="{Binding MonthDays}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="7" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="2"
+                                            MinHeight="48"
+                                            Padding="5"
+                                            CornerRadius="6"
+                                            Background="#10000000">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Day}"
+                                                       HorizontalAlignment="Right"
+                                                       FontSize="11" />
+                                            <TextBlock Text="{Binding CompletedCount, StringFormat='完成 {0}'}"
+                                                       FontSize="9"
+                                                       Foreground="#22C55E" />
+                                            <TextBlock Text="{Binding Summary}"
+                                                       FontSize="8"
+                                                       Foreground="#888"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
             </Grid>
         </Border>
     </Border>
@@ -342,22 +415,148 @@
                         <ItemsControl ItemsSource="{Binding Devices}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock Margin="0,8" Text="{Binding}" />
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Alias}" />
+                                            <TextBlock Text="{Binding Address}"
+                                                       Foreground="#777"
+                                                       FontSize="9" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1"
+                                                Command="{Binding $parent[Window].DataContext.Transfer.SendToCommand}"
+                                                CommandParameter="{Binding}"
+                                                Content="发送" />
+                                    </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         <TextBlock Text="暂无设备。可先启服务，或输入手动 IP。"
                                    Foreground="#888"
                                    TextWrapping="Wrap" />
+                        <Separator />
+                        <TextBlock Text="要发送的文件" FontWeight="SemiBold" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Command="{Binding PickFilesCommand}" Content="选择文件" />
+                            <Button Command="{Binding RefreshCommand}" Content="刷新设备" />
+                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding SelectedFiles}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" />
+                                        <Button Grid.Column="1"
+                                                Command="{Binding $parent[Window].DataContext.Transfer.RemoveFileCommand}"
+                                                CommandParameter="{Binding}"
+                                                Content="移除" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="传输进度" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding Sessions}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Peer}" />
+                                            <ProgressBar Value="{Binding Progress}" Maximum="100" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1"
+                                                   Margin="8,0"
+                                                   Text="{Binding Status}" />
+                                        <Button Grid.Column="2"
+                                                Command="{Binding $parent[Window].DataContext.Transfer.CancelSessionCommand}"
+                                                CommandParameter="{Binding}"
+                                                Content="取消" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Separator />
+                        <TextBlock Text="互传设置" FontWeight="SemiBold" />
+                        <TextBox PlaceholderText="设备名称" Text="{Binding Alias}" />
+                        <NumericUpDown Value="{Binding Port}" Minimum="1" Maximum="65535" />
+                        <TextBox PlaceholderText="接收目录" Text="{Binding ReceiveDir}" />
+                        <TextBox PlaceholderText="PIN（可留空）" Text="{Binding Pin}" />
+                        <CheckBox IsChecked="{Binding AutoAcceptFavorites}" Content="自动接收收藏设备" />
+                        <Button Command="{Binding SaveSettingsCommand}" Content="保存互传设置" />
+                        <Separator />
+                        <TextBlock Text="会话式互传" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding Conversations}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button HorizontalContentAlignment="Stretch"
+                                            Command="{Binding $parent[Window].DataContext.Transfer.OpenConversationCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Alias}" />
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding Unread, StringFormat='未读 {0}'}"
+                                                       Foreground="#F59E0B" />
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ItemsControl ItemsSource="{Binding Messages}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Margin="0,2"
+                                            Padding="6"
+                                            CornerRadius="6"
+                                            Background="#10000000">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding SenderAlias}"
+                                                       FontSize="9"
+                                                       Foreground="#777" />
+                                            <TextBlock Text="{Binding Body}" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBox PlaceholderText="输入消息"
+                                 Text="{Binding ChatText}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Command="{Binding SendChatCommand}" Content="发送消息" />
+                            <Button Command="{Binding ClearConversationCommand}" Content="清空会话" />
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
                 <StackPanel Grid.Row="3" Spacing="8">
-                    <TextBox PlaceholderText="输入消息，Enter 发送"
-                             Text="{Binding ChatText}" />
-                    <Button Command="{Binding SendChatCommand}" Content="发送" />
+                    <TextBlock Text="{Binding StatusMessage}" Foreground="#22C55E" />
                     <TextBlock Text="{Binding ErrorMessage}" Foreground="#EF4444" />
                 </StackPanel>
             </Grid>
+        </Border>
+    </Border>
+
+    <Border Background="#CC000000"
+            IsVisible="{Binding Transfer.HasPendingIncoming}"
+            ZIndex="14">
+        <Border Width="360"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Padding="16"
+                CornerRadius="14"
+                Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                DataContext="{Binding Transfer}">
+            <StackPanel Spacing="10">
+                <TextBlock Text="接收文件请求" FontSize="16" FontWeight="SemiBold" />
+                <TextBlock Text="{Binding PendingIncoming.Device.Alias}" />
+                <ItemsControl ItemsSource="{Binding PendingIncoming.Files}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding FileName}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                    <Button Command="{Binding RejectIncomingCommand}" Content="拒绝" />
+                    <Button Command="{Binding AcceptIncomingCommand}" Content="接收" />
+                </StackPanel>
+                <TextBlock Text="{Binding ReceiveDir}" FontSize="10" Foreground="#777" />
+            </StackPanel>
         </Border>
     </Border>
 
@@ -386,7 +585,8 @@
                     <ComboBoxItem Content="低" />
                 </ComboBox>
                 <TextBlock Text="提醒时间" />
-                <DatePicker SelectedDate="{Binding SelectedTask.RemindAt}" />
+                <TextBox PlaceholderText="例如 2026-11-17 09:30"
+                         Text="{Binding SelectedTask.RemindAtText, Mode=TwoWay}" />
                 <TextBlock Text="提前分钟" />
                 <NumericUpDown Value="{Binding SelectedTask.RemindOffsetMinutes}" Minimum="0" Maximum="1440" />
                 <TextBlock Text="重复规则 RRULE" />

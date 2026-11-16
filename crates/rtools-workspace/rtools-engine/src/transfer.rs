@@ -9,6 +9,11 @@ use tokio::sync::{mpsc, Mutex};
 pub struct TransferStatus {
     pub running: bool,
     pub port: u16,
+    pub alias: String,
+    pub fingerprint: String,
+    pub receive_dir: String,
+    pub pin_configured: bool,
+    pub auto_accept_favorites: bool,
     pub error: Option<String>,
 }
 
@@ -25,6 +30,11 @@ impl TransferRuntime {
             status: TransferStatus {
                 running: false,
                 port: rtodo_transfer_core::DEFAULT_PORT,
+                alias: "rtools".into(),
+                fingerprint: String::new(),
+                receive_dir: String::new(),
+                pin_configured: false,
+                auto_accept_favorites: false,
                 error: None,
             },
             events: broadcast::channel(256).0,
@@ -39,19 +49,24 @@ impl TransferRuntime {
         &mut self,
         receive_dir: std::path::PathBuf,
         identity_dir: std::path::PathBuf,
+        config: TransferConfig,
     ) -> Result<TransferStatus> {
         let config = TransferConfig {
-            alias: "rtools".into(),
-            receive_dir,
+            receive_dir: receive_dir.clone(),
             identity_dir,
-            ..TransferConfig::default()
+            ..config
         };
+        self.status.alias = config.alias.clone();
+        self.status.receive_dir = receive_dir.to_string_lossy().into_owned();
+        self.status.pin_configured = config.pin.as_ref().is_some_and(|value| !value.is_empty());
+        self.status.auto_accept_favorites = config.auto_accept_favorites;
         let (tx, mut rx) = mpsc::channel(128);
         let events = self.events.clone();
         match TransferService::start(config, tx).await {
             Ok(service) => {
                 self.status.running = true;
                 self.status.port = service.port();
+                self.status.fingerprint = service.fingerprint().to_string();
                 self.status.error = None;
                 *self.service.lock().await = Some(service);
                 tokio::spawn(async move {
@@ -74,7 +89,23 @@ impl TransferRuntime {
             service.stop().await?;
         }
         self.status.running = false;
+        self.status.fingerprint.clear();
         Ok(self.status.clone())
+    }
+
+    pub fn set_settings(
+        &mut self,
+        alias: String,
+        port: u16,
+        receive_dir: String,
+        pin_configured: bool,
+        auto_accept_favorites: bool,
+    ) {
+        self.status.alias = alias;
+        self.status.port = port;
+        self.status.receive_dir = receive_dir;
+        self.status.pin_configured = pin_configured;
+        self.status.auto_accept_favorites = auto_accept_favorites;
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<rtodo_transfer_core::EventEnvelope> {

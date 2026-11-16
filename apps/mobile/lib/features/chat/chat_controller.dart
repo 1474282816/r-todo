@@ -109,7 +109,7 @@ class ChatController extends ChangeNotifier {
   /// 点击通知带进来的会话，列表页会自动推到详情页（Q45）。
   String? pendingOpenConversation;
   String selfFingerprint = '';
-  String selfAlias = 'r-todo';
+  String selfAlias = 'rtools';
 
   StreamSubscription<TransferEvent>? _subscription;
   Timer? _retry;

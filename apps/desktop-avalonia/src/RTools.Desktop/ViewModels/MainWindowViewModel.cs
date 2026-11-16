@@ -18,6 +18,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         Settings.SyncCompleted += async (_, _) => await ReloadSafeAsync();
         Transfer = new TransferViewModel(engine);
         _engine.TasksChanged += OnTasksChanged;
+        _engine.ReminderDue += OnReminderDue;
     }
 
     public ObservableCollection<TaskItem> ActiveTasks { get; } = [];
@@ -25,6 +26,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     public SettingsViewModel Settings { get; }
     public TransferViewModel Transfer { get; }
     public IEngineClient Engine => _engine;
+    public event EventHandler<ReminderDueEventArgs>? ReminderRaised;
 
     [ObservableProperty]
     private string _newTaskTitle = "";
@@ -70,6 +72,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
             await _engine.StartAsync(cancellationToken);
             EngineStatus = "Engine 已连接";
             await ReloadAsync(cancellationToken);
+            var sync = await _engine.GetSyncStatusAsync(cancellationToken);
+            SyncSummary = sync.Paired
+                ? sync.LastSyncAt is { } last
+                    ? $"已同步 {last.LocalDateTime:HH:mm:ss}"
+                    : "已配对"
+                : "未连接同步";
+            _ = SyncInBackgroundAsync();
         }
         catch (Exception ex)
         {
@@ -80,6 +89,25 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         {
             _loading = false;
             RaiseCounts();
+        }
+    }
+
+    private async Task SyncInBackgroundAsync()
+    {
+        try
+        {
+            var sync = await _engine.SyncNowAsync();
+            SyncSummary = sync.Paired
+                ? sync.LastSyncAt is { } last
+                    ? $"已同步 {last.LocalDateTime:HH:mm:ss}"
+                    : "已配对"
+                : "未连接同步";
+            await ReloadSafeAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            SyncSummary = "同步暂不可用";
         }
     }
 
@@ -181,7 +209,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     private void CloseSettings() => IsSettingsOpen = false;
 
     [RelayCommand]
-    private void OpenMonth() => IsMonthOpen = true;
+    private async Task OpenMonth()
+    {
+        await LoadMonthAsync();
+        IsMonthOpen = true;
+    }
 
     [RelayCommand]
     private void CloseMonth() => IsMonthOpen = false;
@@ -206,6 +238,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
             TaskPriority.Low => 2,
             _ => 1
         };
+    }
+
+    partial void OnSelectedTaskChanged(TaskItem? value)
+    {
+        if (value is not null)
+        {
+            value.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(TaskItem.RemindAt))
+                {
+                    value.RemindAtText = value.RemindAt?.LocalDateTime
+                        .ToString("yyyy-MM-dd HH:mm") ?? "";
+                }
+            };
+        }
     }
 
     partial void OnSelectedTaskPriorityIndexChanged(int value)
@@ -233,6 +280,78 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
 
     [RelayCommand]
     private void SetLowPriority() => NewTaskPriority = TaskPriority.Low;
+
+    [ObservableProperty]
+    private DateTimeOffset? _selectedMonth = DateTimeOffset.Now;
+
+    [ObservableProperty]
+    private ObservableCollection<MonthDayItem> _monthDays = [];
+
+    [ObservableProperty]
+    private ObservableCollection<TaskItem> _monthTasks = [];
+
+    [ObservableProperty]
+    private string _monthTitle = DateTime.Now.ToString("yyyy 年 M 月");
+
+    [RelayCommand]
+    private async Task PreviousMonth()
+    {
+        SelectedMonth = (SelectedMonth ?? DateTimeOffset.Now).AddMonths(-1);
+        await LoadMonthAsync();
+    }
+
+    [RelayCommand]
+    private async Task NextMonth()
+    {
+        SelectedMonth = (SelectedMonth ?? DateTimeOffset.Now).AddMonths(1);
+        await LoadMonthAsync();
+    }
+
+    public async Task LoadMonthAsync()
+    {
+        var month = SelectedMonth ?? DateTimeOffset.Now;
+        var start = new DateTimeOffset(month.Year, month.Month, 1, 0, 0, 0, month.Offset);
+        var end = start.AddMonths(1);
+        var tasks = await _engine.ListTasksAsync();
+        var selected = tasks
+            .Where(task => task.DeletedAt is null)
+            .Where(task =>
+                task.CompletedAt is { } completed &&
+                completed >= start &&
+                completed < end)
+            .OrderByDescending(task => task.CompletedAt)
+            .ToList();
+        MonthTasks = new ObservableCollection<TaskItem>(selected);
+        MonthDays = new ObservableCollection<MonthDayItem>(
+            BuildMonthDays(start, selected));
+        MonthTitle = $"{start.Year} 年 {start.Month} 月";
+    }
+
+    [RelayCommand]
+    private async Task ReorderTask(TaskItem? task)
+    {
+        if (task is null)
+        {
+            return;
+        }
+        var index = ActiveTasks.IndexOf(task);
+        if (index <= 0)
+        {
+            return;
+        }
+        var ids = ActiveTasks.Select(item => item.Id).ToList();
+        ids.RemoveAt(index);
+        ids.Insert(index - 1, task.Id);
+        try
+        {
+            await _engine.ReorderTasksAsync(ids);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
 
     public async Task ReloadAsync(CancellationToken cancellationToken = default)
     {
@@ -287,6 +406,46 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         }
     }
 
+    public async Task ExportIcalAsync(string path)
+    {
+        try
+        {
+            await _engine.ExportIcalAsync(path);
+            SyncSummary = "已导出 iCalendar";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    public async Task ExportCsvAsync(string path)
+    {
+        try
+        {
+            await _engine.ExportTickTickCsvAsync(path);
+            SyncSummary = "已导出 TickTick CSV";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    public async Task ImportCsvAsync(string path)
+    {
+        try
+        {
+            var count = await _engine.ImportTickTickCsvAsync(path);
+            await ReloadAsync();
+            SyncSummary = $"已从 CSV 导入 {count} 条";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+        }
+    }
+
     public async Task SaveEditedTaskAsync()
     {
         if (SelectedTask is null)
@@ -299,6 +458,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     private void OnTasksChanged(object? sender, TaskChangedEventArgs e)
     {
         _ = ReloadSafeAsync();
+    }
+
+    private void OnReminderDue(object? sender, ReminderDueEventArgs e)
+    {
+        ReminderRaised?.Invoke(this, e);
     }
 
     private async Task ReloadSafeAsync()
@@ -330,10 +494,47 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         return task.CompletedAt.Value.LocalDateTime.Date < DateTime.Today;
     }
 
+    private static IReadOnlyList<MonthDayItem> BuildMonthDays(
+        DateTimeOffset monthStart,
+        IReadOnlyList<TaskItem> completed)
+    {
+        var firstGrid = monthStart.AddDays(-(int)monthStart.DayOfWeek);
+        var result = new List<MonthDayItem>(42);
+        for (var offset = 0; offset < 42; offset++)
+        {
+            var date = firstGrid.AddDays(offset);
+            var tasks = completed
+                .Where(task => task.CompletedAt is { } completedAt &&
+                    completedAt.LocalDateTime.Date == date.LocalDateTime.Date)
+                .Select(task => task.Title)
+                .ToList();
+            result.Add(new MonthDayItem
+            {
+                Date = date,
+                Day = date.Day,
+                IsCurrentMonth = date.Month == monthStart.Month,
+                IsToday = date.LocalDateTime.Date == DateTime.Today,
+                CompletedCount = tasks.Count,
+                Summary = string.Join(" · ", tasks.Take(2))
+            });
+        }
+        return result;
+    }
+
     public async ValueTask DisposeAsync()
     {
         _engine.TasksChanged -= OnTasksChanged;
+        _engine.ReminderDue -= OnReminderDue;
         await _engine.DisposeAsync();
     }
 }
 
+public sealed class MonthDayItem
+{
+    public required DateTimeOffset Date { get; init; }
+    public int Day { get; init; }
+    public bool IsCurrentMonth { get; init; }
+    public bool IsToday { get; init; }
+    public int CompletedCount { get; init; }
+    public string Summary { get; init; } = "";
+}

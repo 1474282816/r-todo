@@ -69,7 +69,7 @@ open class TodoWidgetProvider : HomeWidgetProvider() {
         }
         val shown = minOf(count, maxRows)
 
-        views.setTextViewText(R.id.widget_title, "R待办")
+        views.setTextViewText(R.id.widget_title, "rtools")
         views.setTextViewText(R.id.widget_count, "剩余 $count 项")
 
         val taskIds = intArrayOf(R.id.task_1, R.id.task_2, R.id.task_3, R.id.task_4, R.id.task_5, R.id.task_6)

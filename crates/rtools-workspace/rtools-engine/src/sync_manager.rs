@@ -93,6 +93,14 @@ pub fn logout(conn: &Connection) -> Result<SyncSummary> {
 }
 
 pub async fn sync_now(db_path: &std::path::Path) -> Result<SyncSummary> {
+    sync_now_inner(db_path, false).await
+}
+
+pub async fn sync_from_loop(db_path: &std::path::Path) -> Result<SyncSummary> {
+    sync_now_inner(db_path, true).await
+}
+
+async fn sync_now_inner(db_path: &std::path::Path, quiet: bool) -> Result<SyncSummary> {
     let conn = db::open(db_path)?;
     let Some(server_url) = db::get_sync_value(&conn, "server_url")? else {
         anyhow::bail!("尚未配对同步服务");
@@ -140,13 +148,29 @@ pub async fn sync_now(db_path: &std::path::Path) -> Result<SyncSummary> {
             device_id: device_id.clone(),
             operations: accepted,
         };
-        let response = client.push(&device_id, batch).await?;
+        let response = match client.push(&device_id, batch).await {
+            Ok(response) => response,
+            Err(error) if quiet => {
+                let conn = db::open(db_path)?;
+                db::set_sync_value(&conn, "last_error", &error.to_string())?;
+                return summary(&conn);
+            }
+            Err(error) => return Err(error),
+        };
         let mut conn = db::open(db_path)?;
         apply_operation_results(&mut conn, response.results)?;
     }
 
     let conn = db::open(db_path)?;
-    let changes = client.pull(&device_id, cursor).await?;
+    let changes = match client.pull(&device_id, cursor).await {
+        Ok(changes) => changes,
+        Err(error) if quiet => {
+            let conn = db::open(db_path)?;
+            db::set_sync_value(&conn, "last_error", &error.to_string())?;
+            return summary(&conn);
+        }
+        Err(error) => return Err(error),
+    };
     drop(conn);
     let conn = db::open(db_path)?;
     for task in changes.tasks {

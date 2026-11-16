@@ -12,6 +12,16 @@ public sealed class InMemoryEngineClient : IEngineClient
     private bool _transferRunning;
 
     public event EventHandler<TaskChangedEventArgs>? TasksChanged;
+    public event EventHandler<TransferEventEventArgs>? TransferEventReceived
+    {
+        add { }
+        remove { }
+    }
+    public event EventHandler? ChatChanged
+    {
+        add { }
+        remove { }
+    }
     public event EventHandler<ReminderDueEventArgs>? ReminderDue
     {
         add { }
@@ -237,6 +247,19 @@ public sealed class InMemoryEngineClient : IEngineClient
         return File.WriteAllLinesAsync(path, lines, cancellationToken);
     }
 
+    public Task ExportTickTickCsvAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+        => File.WriteAllTextAsync(
+            path,
+            "Title,Content,Status,Completed Time,Start Date,Due Date,Priority\n",
+            cancellationToken);
+
+    public Task<int> ImportTickTickCsvAsync(
+        string path,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(0);
+
     public Task<SyncStatus> GetSyncStatusAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(new SyncStatus());
 
@@ -320,9 +343,23 @@ public sealed class InMemoryEngineClient : IEngineClient
         return GetMcpStatusAsync(cancellationToken);
     }
 
+    public Task<McpTemplates> GetMcpTemplatesAsync(
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(new McpTemplates
+        {
+            ClaudeCode = "claude mcp add rtools",
+            ClaudeDesktop = "{}",
+            Codex = "[mcp_servers.rtools]",
+            OpenCode = "{}"
+        });
+
     public Task<TransferStatus> GetTransferStatusAsync(
         CancellationToken cancellationToken = default)
-        => Task.FromResult(new TransferStatus { Running = _transferRunning });
+        => Task.FromResult(new TransferStatus
+        {
+            Running = _transferRunning,
+            Alias = "rtools-test"
+        });
 
     public Task<TransferStatus> StartTransferAsync(
         CancellationToken cancellationToken = default)
@@ -337,6 +374,87 @@ public sealed class InMemoryEngineClient : IEngineClient
         _transferRunning = false;
         return GetTransferStatusAsync(cancellationToken);
     }
+
+    public Task<IReadOnlyList<TransferDevice>> DiscoverTransferDevicesAsync(
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<TransferDevice>>([]);
+
+    public Task<TransferDevice?> AddManualTransferIpAsync(
+        string host,
+        int port,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<TransferDevice?>(null);
+
+    public Task UpdateTransferSettingsAsync(
+        string alias,
+        int port,
+        string receiveDir,
+        string pin,
+        bool autoAcceptFavorites,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<string> SendTransferFilesAsync(
+        IReadOnlyList<string> paths,
+        string fingerprint,
+        string? pin,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult("session-test");
+
+    public Task<IReadOnlyList<PendingIncoming>> GetPendingIncomingAsync(
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<PendingIncoming>>([]);
+
+    public Task RespondIncomingAsync(
+        string sessionId,
+        IReadOnlyList<string> fileIds,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task RejectIncomingAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task CancelTransferSessionAsync(
+        string sessionId,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<IReadOnlyList<ChatConversation>> ListConversationsAsync(
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<ChatConversation>>([]);
+
+    public Task<IReadOnlyList<ChatMessageItem>> ListMessagesAsync(
+        string conversationId,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<ChatMessageItem>>([]);
+
+    public Task MarkConversationReadAsync(
+        string conversationId,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task ClearConversationAsync(
+        string conversationId,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task SendChatTextAsync(
+        string fingerprint,
+        ChatMessageItem message,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    public Task<bool> IsChatTrustedAsync(
+        string fingerprint,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(true);
+
+    public Task TrustChatPeerAsync(
+        string fingerprint,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
 
     public ValueTask DisposeAsync()
     {

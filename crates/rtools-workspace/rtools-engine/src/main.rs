@@ -11,6 +11,7 @@ use rtools_engine::{
 };
 use serde_json::{json, Value};
 use std::{path::PathBuf, sync::Arc};
+use tokio::sync::{broadcast, mpsc};
 use tokio::{net::windows::named_pipe::ServerOptions, sync::Mutex};
 
 #[derive(Parser, Debug)]
@@ -30,6 +31,7 @@ enum Command {
     Health,
     Import { json: PathBuf },
     Backup { output: PathBuf },
+    Mcp,
 }
 
 struct EngineState {
@@ -37,6 +39,7 @@ struct EngineState {
     data_dir: PathBuf,
     mcp: Mutex<Option<mcp::McpRuntime>>,
     transfer: Mutex<TransferRuntime>,
+    events: broadcast::Sender<Value>,
 }
 
 #[tokio::main]
@@ -55,6 +58,16 @@ async fn main() -> Result<()> {
     std::fs::create_dir_all(&data_dir)?;
     let db_path = data_dir.join("rtools.db");
     match cli.command.unwrap_or(Command::Serve) {
+        Command::Mcp => {
+            let (events, _) = broadcast::channel(32);
+            let runtime = mcp::McpRuntime::start(db_path.clone(), 18765, events)?;
+            let conn = db::open(&db_path)?;
+            db::set_setting(&conn, "mcp_enabled", "true")?;
+            println!("rtools-mcp listening on http://127.0.0.1:18765/mcp");
+            tokio::signal::ctrl_c().await?;
+            drop(runtime);
+            Ok(())
+        }
         Command::Health => {
             let conn = db::open(&db_path)?;
             println!(
@@ -91,21 +104,28 @@ async fn main() -> Result<()> {
 }
 
 async fn serve(data_dir: PathBuf, db_path: PathBuf, pipe_name: String) -> Result<()> {
+    let (events, _) = broadcast::channel(512);
+    let event_sender = events.clone();
     let state = Arc::new(EngineState {
         db_path: db_path.clone(),
         data_dir,
         mcp: Mutex::new(None),
         transfer: Mutex::new(TransferRuntime::new()),
+        events,
     });
     {
         let conn = db::open(&db_path)?;
+        db::discard_overdue_reminders(&conn, chrono::Utc::now())?;
         if mcp::is_enabled(&conn)? {
-            match mcp::McpRuntime::start(db_path.clone(), 18765) {
+            match mcp::McpRuntime::start(db_path.clone(), 18765, event_sender.clone()) {
                 Ok(runtime) => *state.mcp.lock().await = Some(runtime),
                 Err(err) => tracing::warn!(%err, "MCP failed to start"),
             }
         }
     }
+    spawn_reminder_loop(db_path.clone(), event_sender.clone());
+    spawn_sync_loop(db_path.clone(), event_sender.clone());
+    spawn_transfer_events(state.clone());
     tracing::info!(pipe=%pipe_name, db=%db_path.display(), "engine listening");
     let pipe_path = if pipe_name.starts_with(r"\\.\pipe\") {
         pipe_name
@@ -127,11 +147,40 @@ async fn serve(data_dir: PathBuf, db_path: PathBuf, pipe_name: String) -> Result
 }
 
 async fn handle_client(
-    mut pipe: tokio::net::windows::named_pipe::NamedPipeServer,
+    pipe: tokio::net::windows::named_pipe::NamedPipeServer,
     state: Arc<EngineState>,
 ) -> Result<()> {
-    loop {
-        let frame = read_frame(&mut pipe).await?;
+    let (mut reader, mut writer) = tokio::io::split(pipe);
+    let (out_tx, mut out_rx) = mpsc::channel::<Vec<u8>>(256);
+    let writer_task = tokio::spawn(async move {
+        while let Some(frame) = out_rx.recv().await {
+            write_frame(&mut writer, &frame).await?;
+        }
+        Ok::<(), anyhow::Error>(())
+    });
+    let mut events = state.events.subscribe();
+    let event_tx = out_tx.clone();
+    tokio::spawn(async move {
+        while let Ok(value) = events.recv().await {
+            let event = rtools_engine::rpc::Event {
+                protocol_version: rtools_engine::PROTOCOL_VERSION,
+                message_type: "event".into(),
+                event: value["event"].as_str().unwrap_or("engine.event").into(),
+                payload: value.get("payload").cloned().unwrap_or_default(),
+            };
+            let Ok(frame) = serde_json::to_vec(&event) else {
+                continue;
+            };
+            if event_tx.send(frame).await.is_err() {
+                break;
+            }
+        }
+    });
+    let result = loop {
+        let frame = match read_frame(&mut reader).await {
+            Ok(frame) => frame,
+            Err(error) => break Err(error),
+        };
         let request: Request = serde_json::from_slice(&frame)?;
         let response = if request.protocol_version != rtools_engine::PROTOCOL_VERSION {
             Response {
@@ -162,8 +211,16 @@ async fn handle_client(
                 },
             }
         };
-        write_frame(&mut pipe, &serde_json::to_vec(&response)?).await?;
-    }
+        if out_tx.send(serde_json::to_vec(&response)?).await.is_err() {
+            break Err(anyhow::anyhow!("RPC writer disconnected"));
+        }
+    };
+    // 客户端退出时，事件泵仍可能持有发送端。先丢弃当前连接专属的
+    // 事件泵，让 writer 能立即结束；全局广播仍由其他连接继续消费。
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    drop(out_tx);
+    let _ = writer_task.await;
+    result
 }
 
 async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<Value, RpcError> {
@@ -233,12 +290,23 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
             let id = payload["id"].as_str().unwrap_or_default();
             let completed = payload["completed"].as_bool().unwrap_or(false);
             let conn = rpc_try!(db::open(&state.db_path));
-            let task = rpc_try!(TaskService::new(&conn).complete(id, completed));
+            let (task, next) = rpc_try!(TaskService::new(&conn).complete_and_roll(id, completed));
             rpc_try!(sync_manager::enqueue_task_update(
                 &conn,
                 &task,
                 &uuid::Uuid::new_v4().to_string()
             ));
+            if let Some(next) = next.as_ref() {
+                rpc_try!(sync_manager::enqueue_task_update(
+                    &conn,
+                    next,
+                    &uuid::Uuid::new_v4().to_string()
+                ));
+            }
+            let _ = state.events.send(json!({
+                "event":"tasks.changed",
+                "payload":{"task_ids":[task.id],"created_task_id":next.as_ref().map(|value| value.id.clone())}
+            }));
             Ok(serde_json::to_value(task).unwrap_or_default())
         }
         "tasks.delete" => {
@@ -256,6 +324,19 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
             let ids: Vec<String> = rpc_try!(serde_json::from_value(payload["ids"].clone()));
             let conn = rpc_try!(db::open(&state.db_path));
             rpc_try!(TaskService::new(&conn).reorder(&ids));
+            for id in &ids {
+                if let Some(task) = rpc_try!(db::get_task(&conn, id)) {
+                    rpc_try!(sync_manager::enqueue_task_update(
+                        &conn,
+                        &task,
+                        &uuid::Uuid::new_v4().to_string()
+                    ));
+                }
+            }
+            let _ = state.events.send(json!({
+                "event":"tasks.changed",
+                "payload":{"task_ids":ids}
+            }));
             Ok(json!({"ok":true}))
         }
         "tasks.import_json" => {
@@ -402,7 +483,7 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
             let token = rpc_try!(mcp::token_from_db(&conn));
             let mut guard = state.mcp.lock().await;
             if enabled && guard.is_none() {
-                match mcp::McpRuntime::start(state.db_path.clone(), 18765) {
+                match mcp::McpRuntime::start(state.db_path.clone(), 18765, state.events.clone()) {
                     Ok(runtime) => *guard = Some(runtime),
                     Err(err) => {
                         return Ok(
@@ -431,11 +512,68 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
             Ok(serde_json::to_value(state.transfer.lock().await.status()).unwrap_or_default())
         }
         "transfer.start" => {
-            let (receive, identity) = default_transfer_dirs(&state.data_dir);
+            let (default_receive, identity) = default_transfer_dirs(&state.data_dir);
+            let conn = rpc_try!(db::open(&state.db_path));
+            let alias = rpc_try!(db::get_setting(&conn, "transfer_alias"))
+                .unwrap_or_else(|| "rtools".into());
+            let port = rpc_try!(db::get_setting(&conn, "transfer_port"))
+                .and_then(|value| value.parse().ok())
+                .unwrap_or(53317);
+            let receive = rpc_try!(db::get_setting(&conn, "transfer_receive_dir"))
+                .filter(|value| !value.trim().is_empty())
+                .map(PathBuf::from)
+                .unwrap_or(default_receive);
+            let pin =
+                rpc_try!(db::get_setting(&conn, "transfer_pin")).filter(|value| !value.is_empty());
+            let auto_accept_favorites =
+                rpc_try!(db::get_setting(&conn, "transfer_auto_accept")).as_deref() == Some("true");
+            let config = rtodo_transfer_core::TransferConfig {
+                alias,
+                port,
+                receive_dir: receive.clone(),
+                identity_dir: identity.clone(),
+                pin,
+                auto_accept_favorites,
+                verify_checksums: true,
+            };
             Ok(serde_json::to_value(rpc_try!(
-                state.transfer.lock().await.start(receive, identity).await
+                state
+                    .transfer
+                    .lock()
+                    .await
+                    .start(receive, identity, config)
+                    .await
             ))
             .unwrap_or_default())
+        }
+        "transfer.settings" => {
+            let alias = payload["alias"].as_str().unwrap_or("rtools");
+            let port = payload["port"].as_u64().unwrap_or(53317).clamp(1, 65535);
+            let receive_dir = payload["receive_dir"].as_str().unwrap_or_default();
+            let pin = payload["pin"].as_str().unwrap_or_default();
+            let auto_accept = payload["auto_accept_favorites"].as_bool().unwrap_or(false);
+            let conn = rpc_try!(db::open(&state.db_path));
+            for (key, value) in [
+                ("transfer_alias", alias.to_string()),
+                ("transfer_port", port.to_string()),
+                ("transfer_receive_dir", receive_dir.to_string()),
+                ("transfer_pin", pin.to_string()),
+                (
+                    "transfer_auto_accept",
+                    if auto_accept { "true" } else { "false" }.to_string(),
+                ),
+            ] {
+                rpc_try!(db::set_setting(&conn, key, &value));
+            }
+            let mut transfer = state.transfer.lock().await;
+            transfer.set_settings(
+                alias.to_string(),
+                port as u16,
+                receive_dir.to_string(),
+                !pin.is_empty(),
+                auto_accept,
+            );
+            Ok(serde_json::to_value(transfer.status()).unwrap_or_default())
         }
         "transfer.stop" => Ok(serde_json::to_value(rpc_try!(
             state.transfer.lock().await.stop().await
@@ -478,6 +616,22 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
             );
             Ok(json!({"session_id":session}))
         }
+        "transfer.send_files" => {
+            let paths: Vec<PathBuf> = rpc_try!(serde_json::from_value(payload["paths"].clone()));
+            let session = rpc_try!(
+                state
+                    .transfer
+                    .lock()
+                    .await
+                    .send(
+                        paths,
+                        payload["fingerprint"].as_str().unwrap_or_default(),
+                        payload["pin"].as_str().map(str::to_owned),
+                    )
+                    .await
+            );
+            Ok(json!({"session_id":session}))
+        }
         "transfer.pending" => Ok(serde_json::to_value(
             state.transfer.lock().await.pending_incoming().await,
         )
@@ -490,6 +644,21 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
                     .lock()
                     .await
                     .respond_prepare(payload["session_id"].as_str().unwrap_or_default(), ids,)
+                    .await
+            );
+            Ok(json!({"ok":true}))
+        }
+        "transfer.respond_file" => {
+            rpc_try!(
+                state
+                    .transfer
+                    .lock()
+                    .await
+                    .respond_file(
+                        payload["session_id"].as_str().unwrap_or_default(),
+                        payload["file_id"].as_str().unwrap_or_default(),
+                        std::path::Path::new(payload["save_path"].as_str().unwrap_or_default()),
+                    )
                     .await
             );
             Ok(json!({"ok":true}))
@@ -514,6 +683,71 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
                     .cancel(payload["session_id"].as_str().unwrap_or_default())
                     .await
             );
+            Ok(json!({"ok":true}))
+        }
+        "chat.list_conversations" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            Ok(serde_json::to_value(rpc_try!(db::list_conversations(&conn))).unwrap_or_default())
+        }
+        "chat.list_messages" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            Ok(serde_json::to_value(rpc_try!(db::list_messages(
+                &conn,
+                payload["conversation_id"].as_str().unwrap_or_default()
+            )))
+            .unwrap_or_default())
+        }
+        "chat.mark_read" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            rpc_try!(db::mark_conversation_read(
+                &conn,
+                payload["conversation_id"].as_str().unwrap_or_default()
+            ));
+            Ok(json!({"ok":true}))
+        }
+        "chat.clear" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            rpc_try!(db::clear_conversation(
+                &conn,
+                payload["conversation_id"].as_str().unwrap_or_default()
+            ));
+            Ok(json!({"ok":true}))
+        }
+        "chat.send_text" => {
+            let message: rtodo_transfer_core::ChatMessage =
+                rpc_try!(serde_json::from_value(payload["message"].clone()));
+            let fingerprint = payload["fingerprint"].as_str().unwrap_or_default();
+            rpc_try!(
+                state
+                    .transfer
+                    .lock()
+                    .await
+                    .send_message(fingerprint, &message)
+                    .await
+            );
+            let conn = rpc_try!(db::open(&state.db_path));
+            rpc_try!(db::save_chat_message(&conn, &message, "send"));
+            let _ = state.events.send(json!({
+                "event":"chat.changed",
+                "payload":{"conversation_id":message.conversation_id}
+            }));
+            Ok(json!({"ok":true}))
+        }
+        "chat.trusted" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            Ok(json!({
+                "trusted":rpc_try!(db::is_trusted_peer(
+                    &conn,
+                    payload["fingerprint"].as_str().unwrap_or_default()
+                ))
+            }))
+        }
+        "chat.trust" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            rpc_try!(db::trust_peer(
+                &conn,
+                payload["fingerprint"].as_str().unwrap_or_default()
+            ));
             Ok(json!({"ok":true}))
         }
         _ => Err(RpcError {
@@ -545,4 +779,82 @@ fn default_data_dir() -> Option<PathBuf> {
 fn default_pipe_name() -> String {
     let user = std::env::var("USERNAME").unwrap_or_else(|_| "user".into());
     format!(r"\\.\pipe\rtools-engine-{user}")
+}
+
+fn spawn_reminder_loop(db_path: PathBuf, events: broadcast::Sender<Value>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+        loop {
+            interval.tick().await;
+            let Ok(conn) = db::open(&db_path) else {
+                continue;
+            };
+            loop {
+                let Ok(Some(reminder)) = db::take_due_reminder(&conn, chrono::Utc::now()) else {
+                    break;
+                };
+                let _ = events.send(json!({
+                    "event":"reminder.due",
+                    "payload":{
+                        "task_id":reminder.task_id,
+                        "title":reminder.title,
+                        "due_at":reminder.due_at
+                    }
+                }));
+            }
+        }
+    });
+}
+
+fn spawn_sync_loop(db_path: PathBuf, events: broadcast::Sender<Value>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(15));
+        loop {
+            interval.tick().await;
+            let Ok(conn) = db::open(&db_path) else {
+                continue;
+            };
+            if db::get_sync_value(&conn, "token").ok().flatten().is_none() {
+                continue;
+            }
+            drop(conn);
+            if sync_manager::sync_from_loop(&db_path).await.is_ok() {
+                let _ = events.send(json!({
+                    "event":"tasks.changed",
+                    "payload":{"source":"sync"}
+                }));
+            }
+        }
+    });
+}
+
+fn spawn_transfer_events(state: Arc<EngineState>) {
+    tokio::spawn(async move {
+        let mut receiver = state.transfer.lock().await.subscribe();
+        loop {
+            let Ok(envelope) = receiver.recv().await else {
+                continue;
+            };
+            let payload = serde_json::to_value(&envelope).unwrap_or_default();
+            if let rtodo_transfer_core::TransferEvent::Message { message } = &envelope.event {
+                if let Ok(conn) = db::open(&state.db_path) {
+                    let _ = db::save_chat_message(&conn, message, "receive");
+                }
+                let _ = state.events.send(json!({
+                    "event":"chat.changed",
+                    "payload":{"conversation_id":message.conversation_id}
+                }));
+            }
+            if let rtodo_transfer_core::TransferEvent::Incoming { .. } = &envelope.event {
+                let _ = state.events.send(json!({
+                    "event":"transfer.incoming",
+                    "payload":payload
+                }));
+            }
+            let _ = state.events.send(json!({
+                "event":"transfer.event",
+                "payload":payload
+            }));
+        }
+    });
 }
