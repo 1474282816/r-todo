@@ -384,20 +384,9 @@ public sealed class EngineProcessClient : IEngineClient
         var client = new HttpClient();
         client.DefaultRequestHeaders.UserAgent.ParseAdd("rtools-updater");
         client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
-        string json;
-        try
-        {
-            json = await client.GetStringAsync(
-                "https://api.github.com/repos/1474282816/r-todo/releases/latest",
-                cancellationToken);
-        }
-        catch (HttpRequestException)
-        {
-            // 私有仓库的匿名 API 不返回 release；改用公开静态清单。
-            json = await client.GetStringAsync(
-                "https://raw.githubusercontent.com/1474282816/r-todo/master/latest.json",
-                cancellationToken);
-        }
+        var json = await client.GetStringAsync(
+            "https://api.github.com/repos/1474282816/r-todo/releases/latest",
+            cancellationToken);
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         var latest = root.TryGetProperty("tag_name", out var tag)
