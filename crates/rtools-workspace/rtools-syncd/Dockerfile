@@ -1,6 +1,7 @@
 FROM rust:1.100-bookworm AS builder
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
+COPY .cargo ./.cargo
 COPY rtools-domain ./rtools-domain
 COPY rtools-sync-proto ./rtools-sync-proto
 COPY rtools-syncd ./rtools-syncd
