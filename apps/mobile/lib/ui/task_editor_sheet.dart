@@ -19,18 +19,30 @@ class TaskEditorSheet extends ConsumerStatefulWidget {
 
 class _TaskEditorSheetState extends ConsumerState<TaskEditorSheet> {
   late final TextEditingController _titleController;
+  late final TextEditingController _remindController;
+  late final TextEditingController _repeatController;
   late Priority _priority;
+  int _offset = 15;
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.task.title);
+    _remindController = TextEditingController(
+      text: _localText(widget.task.remindAt),
+    );
+    _repeatController = TextEditingController(
+      text: widget.task.repeatRule ?? '',
+    );
     _priority = widget.task.priority;
+    _offset = widget.task.remindOffsetMin;
   }
 
   @override
   void dispose() {
     _titleController.dispose();
+    _remindController.dispose();
+    _repeatController.dispose();
     super.dispose();
   }
 
@@ -40,6 +52,12 @@ class _TaskEditorSheetState extends ConsumerState<TaskEditorSheet> {
           ? widget.task.title
           : _titleController.text.trim(),
       priority: _priority,
+      remindAt: () => _iso(_remindController.text),
+      remindOffsetMin: _offset,
+      repeatRule: () {
+        final value = _repeatController.text.trim();
+        return value.isEmpty ? null : value;
+      },
     );
     await ref.read(taskListProvider.notifier).update(widget.task.id, updated);
     if (mounted) Navigator.of(context).pop();
@@ -73,6 +91,54 @@ class _TaskEditorSheetState extends ConsumerState<TaskEditorSheet> {
           FTextField(
             control: FTextFieldControl.managed(controller: _titleController),
             hint: '任务标题',
+          ),
+          const Gap(16),
+          const Text('提醒时间（例如 2026-11-17 09:30）',
+              style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+          const Gap(8),
+          FTextField(
+            control: FTextFieldControl.managed(controller: _remindController),
+            hint: '留空表示不提醒',
+          ),
+          const Gap(8),
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final minutes in const [0, 5, 15, 30, 60])
+                ChoiceChip(
+                  label: Text(minutes == 0 ? '准时' : '$minutes 分钟前'),
+                  selected: _offset == minutes,
+                  onSelected: (_) => setState(() => _offset = minutes),
+                ),
+            ],
+          ),
+          const Gap(16),
+          const Text('重复规则（RRULE，留空表示不重复）',
+              style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF))),
+          const Gap(8),
+          FTextField(
+            control: FTextFieldControl.managed(controller: _repeatController),
+            hint: '例如 FREQ=DAILY;INTERVAL=1',
+          ),
+          const Gap(8),
+          Wrap(
+            spacing: 6,
+            children: [
+              for (final preset in const [
+                'FREQ=DAILY;INTERVAL=1',
+                'FREQ=WEEKLY;INTERVAL=1',
+                'FREQ=MONTHLY;INTERVAL=1',
+              ])
+                ActionChip(
+                  label: Text(switch (preset.split(';').first) {
+                    'FREQ=DAILY' => '每天',
+                    'FREQ=WEEKLY' => '每周',
+                    _ => '每月',
+                  }),
+                  onPressed: () =>
+                      setState(() => _repeatController.text = preset),
+                ),
+            ],
           ),
           const Gap(16),
           const Text('优先级',
@@ -136,5 +202,18 @@ class _TaskEditorSheetState extends ConsumerState<TaskEditorSheet> {
         ],
       ),
     );
+  }
+
+  static String _localText(String? iso) {
+    final value = DateTime.tryParse(iso ?? '')?.toLocal();
+    if (value == null) return '';
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${value.year}-${two(value.month)}-${two(value.day)} '
+        '${two(value.hour)}:${two(value.minute)}';
+  }
+
+  static String? _iso(String text) {
+    final value = DateTime.tryParse(text.trim());
+    return value?.toUtc().toIso8601String();
   }
 }

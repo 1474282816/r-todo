@@ -68,6 +68,12 @@ class MainActivity : FlutterActivity() {
                         openInstallSettings()
                         result.success(true)
                     }
+                    "showReminder" -> {
+                        val title = call.argument<String>("title") ?: "rtools"
+                        val text = call.argument<String>("text") ?: "任务提醒"
+                        TransferForegroundService.start(this, title, text)
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }

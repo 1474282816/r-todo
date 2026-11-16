@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rrule/rrule.dart';
 
 import '../data/database.dart';
 import '../data/task.dart';
@@ -105,6 +106,41 @@ class TaskListNotifier extends StateNotifier<List<TodoTask>> {
       for (final x in state) x.id == id ? updated : x,
     ];
     SyncService.maybe?.pushTask(updated);
+    if (completing && t.repeatRule != null) {
+      final next = nextRepeatInstance(t);
+      if (next != null) {
+        await add(
+          title: next.title,
+          priority: next.priority,
+          remindAt: next.remindAt,
+          remindOffsetMin: next.remindOffsetMin,
+          repeatRule: next.repeatRule,
+        );
+      }
+    }
+  }
+
+  TodoTask? nextRepeatInstance(TodoTask task) {
+    final ruleText = task.repeatRule;
+    if (ruleText == null) return null;
+    try {
+      final base = DateTime.tryParse(task.remindAt ?? '') ??
+          DateTime.now().toUtc();
+      final normalized = ruleText.contains('RRULE:')
+          ? ruleText
+          : 'RRULE:$ruleText';
+      final next = RecurrenceRule.fromString(normalized)
+          .getInstances(start: base.toUtc(), after: base.toUtc())
+          .firstOrNull;
+      if (next == null) return null;
+      return task.copyWith(
+        remindAt: () => task.remindAt == null ? null : next.toIso8601String(),
+        completedAt: () => null,
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> reorderActive(List<String> orderedIds) async {
