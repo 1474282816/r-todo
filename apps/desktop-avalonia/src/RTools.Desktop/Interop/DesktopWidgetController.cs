@@ -79,6 +79,40 @@ public sealed class DesktopWidgetController : IDisposable
             const uint ScMinimize = 0xF020;
             const uint WmNcActivate = 0x0086;
             const uint WmNcPaint = 0x0085;
+            const uint WmSettingChange = 0x001A;
+            if (msg == Win32Native.TaskbarCreatedMessage)
+            {
+                var currentProgman = Win32Native.FindWindow("Progman", null);
+                if (currentProgman != IntPtr.Zero)
+                {
+                    Win32Native.SetWindowLongPtr(h, -8, currentProgman);
+                    Win32Native.SetWindowPos(
+                        h,
+                        Win32Native.HwndBottom,
+                        0,
+                        0,
+                        0,
+                        0,
+                        Win32Native.SwpNoMove |
+                        Win32Native.SwpNoSize |
+                        Win32Native.SwpNoActivate |
+                        Win32Native.SwpFrameChanged);
+                }
+            }
+            if (msg == WmSettingChange)
+            {
+                // 壁纸或系统主题变化后，保持挂件在桌面层。
+                Win32Native.SetWindowPos(
+                    h,
+                    Win32Native.HwndBottom,
+                    0,
+                    0,
+                    0,
+                    0,
+                    Win32Native.SwpNoMove |
+                    Win32Native.SwpNoSize |
+                    Win32Native.SwpNoActivate);
+            }
             if (msg == WmSysCommand &&
                 ((uint)wParam.ToInt64() & 0xFFF0) == ScMinimize)
             {
@@ -105,7 +139,38 @@ public sealed class DesktopWidgetController : IDisposable
                 return;
             }
             var current = _window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
-            if (current != IntPtr.Zero && Win32Native.IsWindowVisible(current))
+            if (current == IntPtr.Zero)
+            {
+                return;
+            }
+            if (!Win32Native.IsWindowVisible(current))
+            {
+                // 挂件被外部窗口管理器隐藏时自动回滚，避免程序在跑但桌面无内容。
+                _keeper?.Stop();
+                if (_hook is not null)
+                {
+                    Win32Properties.RemoveWndProcHookCallback(_window, _hook);
+                    _hook = null;
+                }
+                var hwnd = _window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+                if (hwnd != IntPtr.Zero)
+                {
+                    Win32Native.SetWindowLongPtr(hwnd, -8, IntPtr.Zero);
+                    var exStyle = Win32Native.GetWindowLongPtr(
+                        hwnd,
+                        Win32Native.GwlExStyle).ToInt64();
+                    exStyle &= ~Win32Native.WsExToolWindow;
+                    exStyle |= Win32Native.WsExAppWindow;
+                    Win32Native.SetWindowLongPtr(
+                        hwnd,
+                        Win32Native.GwlExStyle,
+                        new IntPtr(exStyle));
+                }
+                _enabled = false;
+                _window.Show();
+                return;
+            }
+            if (Win32Native.IsWindowVisible(current))
             {
                 Win32Native.SetWindowPos(
                     current,

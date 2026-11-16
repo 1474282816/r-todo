@@ -4,6 +4,8 @@ namespace RTools.Desktop.Interop;
 
 internal static class Win32Native
 {
+    public static readonly uint TaskbarCreatedMessage =
+        RegisterWindowMessage("TaskbarCreated");
     public const int GwlExStyle = -20;
     public const long WsExAppWindow = 0x00040000;
     public const long WsExToolWindow = 0x00000080;
