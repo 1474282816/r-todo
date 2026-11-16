@@ -174,6 +174,7 @@ abstract class TransferBackend {
 
   Future<String?> addManualIp(String host, int port);
 
+
   Future<String> send(List<String> paths, String fingerprint, String? pin);
 
   Future<void> respondPrepare(String sessionId, List<String> acceptedFileIds);

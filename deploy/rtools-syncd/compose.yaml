@@ -3,7 +3,7 @@ services:
     build:
       context: ../../crates/rtools-workspace
       dockerfile: rtools-syncd/Dockerfile
-    image: rtools-syncd:0.1.0
+    image: rtools-syncd:0.2.0
     container_name: rtools-syncd
     restart: unless-stopped
     ports:

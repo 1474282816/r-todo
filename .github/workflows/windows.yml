@@ -1,0 +1,44 @@
+name: windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build Rust engine
+        working-directory: crates/rtools-workspace
+        run: cargo build --release -p rtools-engine
+
+      - name: Test Rust workspace
+        working-directory: crates/rtools-workspace
+        run: cargo test --workspace
+
+      - name: Test desktop
+        working-directory: apps/desktop-avalonia
+        run: dotnet test rtools.slnx -c Release
+
+      - name: Publish desktop
+        working-directory: apps/desktop-avalonia
+        run: dotnet publish src/RTools.Desktop/RTools.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o ../../artifacts/desktop
+
+      - name: Package desktop
+        shell: pwsh
+        run: Compress-Archive -Path artifacts/desktop/* -DestinationPath artifacts/rtools-win-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rtools-win-x64
+          path: artifacts/rtools-win-x64.zip

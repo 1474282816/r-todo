@@ -41,4 +41,17 @@
           SkipUnchangedFiles="true"
           Condition="Exists('%(RustEngineFile.FullPath)')" />
   </Target>
+
+  <Target Name="CopyRustEngineToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <PublishRustEngine Include="$(MSBuildProjectDirectory)\..\..\..\..\crates\rtools-workspace\target\release\rtools-engine.exe"
+                         Condition="'$(Configuration)' == 'Release'" />
+      <PublishRustEngine Include="$(MSBuildProjectDirectory)\..\..\..\..\crates\rtools-workspace\target\debug\rtools-engine.exe"
+                         Condition="'$(Configuration)' != 'Release'" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PublishRustEngine)"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('%(PublishRustEngine.FullPath)')" />
+  </Target>
 </Project>

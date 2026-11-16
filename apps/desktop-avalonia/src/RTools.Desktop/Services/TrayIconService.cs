@@ -70,14 +70,35 @@ public static class TrayIconService
             Path.Combine(AppContext.BaseDirectory, "rtools.ico")
         };
         var path = candidates.FirstOrDefault(File.Exists);
-        if (path is null)
+        try
         {
-            return new WindowIcon(
-                new MemoryStream(
-                    Convert.FromBase64String(
-                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=")));
+            if (path is not null)
+            {
+                using var stream = File.OpenRead(path);
+                return new WindowIcon(stream);
+            }
         }
-        return new WindowIcon(path);
+        catch
+        {
+        }
+        return CreateFallbackIcon();
+    }
+
+    private static WindowIcon CreateFallbackIcon()
+    {
+        try
+        {
+            using var stream = new MemoryStream(
+                Convert.FromBase64String(
+                    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII="));
+            return new WindowIcon(stream);
+        }
+        catch
+        {
+        using var icon = Avalonia.Platform.AssetLoader.Open(
+                new Uri("avares://RTools.Desktop/Assets/rtools.ico"));
+        return new WindowIcon(icon);
+        }
     }
 }
 

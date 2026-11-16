@@ -188,7 +188,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         try
         {
             ErrorMessage = null;
-            var saved = await _engine.UpdateTaskAsync(task);
+            await _engine.UpdateTaskAsync(task);
             await ReloadAsync();
             SelectedTask = null;
         }
