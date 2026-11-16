@@ -15,7 +15,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
-import java.util.Base64
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -35,10 +34,6 @@ open class TodoWidgetProvider : HomeWidgetProvider() {
     const val EXTRA_TASK_ID = "task_id"
 
     /** Flutter shared_preferences 插件的存储文件名与 key 前缀 */
-    private const val FLUTTER_PREFS = "FlutterSharedPreferences"
-    private const val FLUTTER_PREFIX = "flutter."
-    private const val SYNC_AUTH_KEY = "r-todo/sync/auth"
-
     /** home_widget 插件的存储文件名 */
     private const val WIDGET_PREFS = "HomeWidgetPreferences"
     private const val WIDGET_TASKS_KEY = "tasks"
@@ -150,8 +145,7 @@ open class TodoWidgetProvider : HomeWidgetProvider() {
         timeZone = TimeZone.getTimeZone("UTC")
       }.format(Date())
 
-      // drift 的库文件位于 app_flutter/r-todo.db（path_provider 的 getApplicationDocumentsDirectory
-      // 在 Android 上 = getDir("flutter") → /data/user/0/<pkg>/app_flutter；注意 getDir 自带 "app_" 前缀）
+      // drift 数据库沿用 r-todo.db 文件名，避免升级后丢失本地待办。
       val dbFile = File(context.getDir("flutter", Context.MODE_PRIVATE), "r-todo.db")
       SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
         db.execSQL(
@@ -159,34 +153,41 @@ open class TodoWidgetProvider : HomeWidgetProvider() {
             arrayOf(now, now, taskId),
         )
 
-        // 构造同步 payload（字段与 Dart 侧 _toRemote 一致），入 pending_ops 等待推送
-        val userId = jwtSubject(
-            context.getSharedPreferences(FLUTTER_PREFS, Context.MODE_PRIVATE)
-                .getString(FLUTTER_PREFIX + SYNC_AUTH_KEY, null),
-        ) ?: ""
+        // 构造新的 rtools 同步操作，入 pending_ops 等待 Dart 推送。
+        val revision = db.rawQuery(
+            "SELECT revision FROM tasks WHERE id = ?",
+            arrayOf(taskId),
+        ).use { c -> if (c.moveToFirst()) c.getLong(0) else 0L }
         val payload = db.rawQuery(
-            "SELECT id, title, priority, remind_at, remind_offset_min, repeat_rule, sort_order, deleted, created_at, updated_at FROM tasks WHERE id = ?",
+            "SELECT id, title, priority, remind_at, remind_offset_min, repeat_rule, sort_order, deleted, created_at FROM tasks WHERE id = ?",
             arrayOf(taskId),
         ).use { c ->
           if (c.moveToFirst()) {
             JSONObject()
                 .put("id", c.getString(0))
-                .put("user", userId)
                 .put("title", c.getString(1))
                 .put("priority", c.getString(2))
-                .put("remind_at", c.getString(3) ?: "")
+                .put("remind_at", c.getString(3))
                 .put("remind_offset_min", c.getInt(4))
-                .put("repeat_rule", c.getString(5) ?: "")
+                .put("repeat_rule", c.getString(5))
                 .put("sort_order", c.getDouble(6))
                 .put("deleted", c.getInt(7) != 0)
                 .put("completed_at", now)
+                .put("created_at", c.getString(8))
+                .put("updated_at", now)
+                .put("revision", revision)
                 .toString()
           } else null
         }
         if (payload != null) {
           db.execSQL(
-              "INSERT INTO pending_ops(op_type, collection, record_id, payload, created_at) VALUES('update', 'tasks', ?, ?, ?)",
-              arrayOf<Any?>(taskId, payload, System.currentTimeMillis()),
+              "INSERT INTO pending_ops(op_type, collection, record_id, payload, created_at) VALUES(?, 'tasks', ?, ?, ?)",
+              arrayOf<Any?>(
+                  if (revision == 0L) "create" else "update",
+                  taskId,
+                  payload,
+                  System.currentTimeMillis(),
+              ),
           )
         }
       }
@@ -225,16 +226,4 @@ open class TodoWidgetProvider : HomeWidgetProvider() {
     return ids.toIntArray()
   }
 
-  /** 从 PocketBase JWT 解出用户 id（同步 payload 需要） */
-  private fun jwtSubject(token: String?): String? {
-    if (token == null) return null
-    return try {
-      val parts = token.split(".")
-      if (parts.size < 2) return null
-      val payload = Base64.getUrlDecoder().decode(parts[1])
-      JSONObject(String(payload, Charsets.UTF_8)).optString("sub").ifEmpty { null }
-    } catch (_: Exception) {
-      null
-    }
-  }
 }
