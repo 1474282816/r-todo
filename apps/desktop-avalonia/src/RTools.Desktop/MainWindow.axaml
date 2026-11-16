@@ -288,6 +288,16 @@
                         <TextBlock Text="{Binding Version, StringFormat='版本 {0}'}"
                                    FontSize="10"
                                    Foreground="#777" />
+                        <TextBlock Text="{Binding UpdateStatus}"
+                                   FontSize="10"
+                                   Foreground="#777" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Command="{Binding CheckUpdatesCommand}"
+                                    Content="检查更新" />
+                            <Button Command="{Binding DownloadUpdateCommand}"
+                                    IsVisible="{Binding UpdateAvailable}"
+                                    Content="下载并安装" />
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Button Click="OnImportJson" Content="导入待办 JSON" />
                             <Button Click="OnExportJson" Content="导出 JSON" />

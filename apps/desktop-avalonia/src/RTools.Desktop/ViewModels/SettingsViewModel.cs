@@ -66,6 +66,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     private string _version = "0.2.0";
 
     [ObservableProperty]
+    private string _updateStatus = "";
+
+    [ObservableProperty]
+    private bool _updateAvailable;
+
+    [ObservableProperty]
+    private string? _updateDownloadUrl;
+
+    [ObservableProperty]
     private string? _statusMessage;
 
     [ObservableProperty]
@@ -313,6 +322,55 @@ public sealed partial class SettingsViewModel : ObservableObject
         catch (Exception ex)
         {
             ErrorMessage = ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task CheckUpdatesAsync()
+    {
+        try
+        {
+            ErrorMessage = null;
+            UpdateStatus = "正在检查更新…";
+            var result = await _engine.CheckForUpdatesAsync(Version);
+            UpdateAvailable = result.IsNewer;
+            UpdateDownloadUrl = result.DownloadUrl;
+            UpdateStatus = result.IsNewer
+                ? $"发现新版本 {result.LatestVersion}"
+                : "当前已是最新版本";
+        }
+        catch (Exception ex)
+        {
+            UpdateStatus = "更新检查失败";
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DownloadUpdateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(UpdateDownloadUrl))
+        {
+            ErrorMessage = "当前没有可下载的安装包";
+            return;
+        }
+        try
+        {
+            ErrorMessage = null;
+            var progress = new Progress<double>(value =>
+                UpdateStatus = $"正在下载更新 {value:P0}");
+            var path = await _engine.DownloadUpdateAsync(UpdateDownloadUrl, progress);
+            UpdateStatus = "下载完成，正在启动安装程序";
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            UpdateStatus = "更新下载失败";
         }
     }
 

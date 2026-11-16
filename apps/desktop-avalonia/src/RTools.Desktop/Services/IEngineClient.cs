@@ -61,6 +61,13 @@ public interface IEngineClient : IAsyncDisposable
         CancellationToken cancellationToken = default);
     Task<McpStatus> RotateMcpTokenAsync(CancellationToken cancellationToken = default);
     Task<McpTemplates> GetMcpTemplatesAsync(CancellationToken cancellationToken = default);
+    Task<UpdateCheckResult> CheckForUpdatesAsync(
+        string currentVersion,
+        CancellationToken cancellationToken = default);
+    Task<string> DownloadUpdateAsync(
+        string url,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default);
 
     Task<TransferStatus> GetTransferStatusAsync(CancellationToken cancellationToken = default);
     Task<TransferStatus> StartTransferAsync(CancellationToken cancellationToken = default);
@@ -155,6 +162,20 @@ public sealed class McpTemplates
     public required string ClaudeDesktop { get; init; }
     public required string Codex { get; init; }
     public required string OpenCode { get; init; }
+}
+
+public sealed class UpdateCheckResult
+{
+    public string CurrentVersion { get; init; } = "";
+    public string? LatestVersion { get; init; }
+    public string? DownloadUrl { get; init; }
+    public string? Notes { get; init; }
+    public bool IsNewer => Version.TryParse(CleanVersion(LatestVersion), out var latest) &&
+        Version.TryParse(CleanVersion(CurrentVersion), out var current) &&
+        latest > current;
+
+    private static string CleanVersion(string? value)
+        => (value ?? "").Trim().TrimStart('v').Split('-', 2)[0];
 }
 
 public sealed class TransferStatus

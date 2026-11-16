@@ -353,6 +353,21 @@ public sealed class InMemoryEngineClient : IEngineClient
             OpenCode = "{}"
         });
 
+    public Task<UpdateCheckResult> CheckForUpdatesAsync(
+        string currentVersion,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(new UpdateCheckResult
+        {
+            CurrentVersion = currentVersion,
+            LatestVersion = currentVersion
+        });
+
+    public Task<string> DownloadUpdateAsync(
+        string url,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(Path.GetTempFileName());
+
     public Task<TransferStatus> GetTransferStatusAsync(
         CancellationToken cancellationToken = default)
         => Task.FromResult(new TransferStatus

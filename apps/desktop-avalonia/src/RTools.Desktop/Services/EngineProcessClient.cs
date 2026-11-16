@@ -377,6 +377,91 @@ public sealed class EngineProcessClient : IEngineClient
         };
     }
 
+    public async Task<UpdateCheckResult> CheckForUpdatesAsync(
+        string currentVersion,
+        CancellationToken cancellationToken = default)
+    {
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("rtools-updater");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        string json;
+        try
+        {
+            json = await client.GetStringAsync(
+                "https://api.github.com/repos/1474282816/r-todo/releases/latest",
+                cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            // 私有仓库的匿名 API 不返回 release；改用公开静态清单。
+            json = await client.GetStringAsync(
+                "https://raw.githubusercontent.com/1474282816/r-todo/master/latest.json",
+                cancellationToken);
+        }
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var latest = root.TryGetProperty("tag_name", out var tag)
+            ? tag.GetString()
+            : root.GetProperty("version").GetString();
+        var notes = root.TryGetProperty("body", out var body) ? body.GetString() : null;
+        var download = root.TryGetProperty("download_url", out var direct)
+            ? direct.GetString()
+            : root.TryGetProperty("assets", out var assets)
+            ? assets.EnumerateArray()
+                .Select(asset => asset.TryGetProperty("browser_download_url", out var url)
+                    ? url.GetString()
+                    : null)
+                .FirstOrDefault(url =>
+                    url?.EndsWith("-setup.exe", StringComparison.OrdinalIgnoreCase) == true)
+            : null;
+        return new UpdateCheckResult
+        {
+            CurrentVersion = currentVersion,
+            LatestVersion = latest,
+            DownloadUrl = download,
+            Notes = notes
+        };
+    }
+
+    public async Task<string> DownloadUpdateAsync(
+        string url,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var directory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "rtools",
+            "updates");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "rtools-update-setup.exe");
+        using var client = new HttpClient();
+        using var response = await client.GetAsync(
+            url,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        var total = response.Content.Headers.ContentLength ?? 0;
+        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var target = File.Create(path);
+        var buffer = new byte[81920];
+        long read = 0;
+        while (true)
+        {
+            var count = await source.ReadAsync(buffer, cancellationToken);
+            if (count == 0)
+            {
+                break;
+            }
+            await target.WriteAsync(buffer.AsMemory(0, count), cancellationToken);
+            read += count;
+            if (total > 0)
+            {
+                progress?.Report((double)read / total);
+            }
+        }
+        return path;
+    }
+
     public async Task<TransferStatus> GetTransferStatusAsync(
         CancellationToken cancellationToken = default)
         => ParseTransfer(await CallAsync("transfer.status", new { }, cancellationToken));
