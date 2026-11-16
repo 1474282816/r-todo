@@ -4,8 +4,10 @@ use rtools_domain::{Priority, TaskDraft, TaskPatch};
 use rtools_engine::{
     db, mcp,
     rpc::{read_frame, write_frame, Request, Response, RpcError},
+    sync_client::SyncClient,
     sync_manager,
     tasks::TaskService,
+    transfer::{default_transfer_dirs, TransferRuntime},
 };
 use serde_json::{json, Value};
 use std::{path::PathBuf, sync::Arc};
@@ -37,6 +39,7 @@ struct EngineState {
     db_path: PathBuf,
     data_dir: PathBuf,
     mcp: Mutex<Option<mcp::McpRuntime>>,
+    transfer: Mutex<TransferRuntime>,
 }
 
 #[tokio::main]
@@ -95,6 +98,7 @@ async fn serve(data_dir: PathBuf, db_path: PathBuf, pipe_name: String) -> Result
         db_path: db_path.clone(),
         data_dir,
         mcp: Mutex::new(None),
+        transfer: Mutex::new(TransferRuntime::new()),
     });
     {
         let conn = db::open(&db_path)?;
@@ -298,6 +302,39 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
             Ok(serde_json::to_value(rpc_try!(sync_manager::logout(&conn)))
                 .unwrap_or_default())
         }
+        "devices.list" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            let server_url = rpc_try!(db::get_sync_value(&conn, "server_url"));
+            let token = rpc_try!(db::get_sync_value(&conn, "token"));
+            let device_id = rpc_try!(db::get_sync_value(&conn, "device_id"));
+            match (server_url, token, device_id) {
+                (Some(url), Some(token), Some(id)) => {
+                    let client = rpc_try!(SyncClient::new(&url).map(|c| c.with_token(token)));
+                    Ok(serde_json::to_value(rpc_try!(client.devices(&id).await))
+                        .unwrap_or_default())
+                }
+                _ => Ok(json!([])),
+            }
+        }
+        "devices.pairing_code" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            let server_url = rpc_try!(db::get_sync_value(&conn, "server_url")).unwrap_or_default();
+            let token = rpc_try!(db::get_sync_value(&conn, "token")).unwrap_or_default();
+            let device_id = rpc_try!(db::get_sync_value(&conn, "device_id")).unwrap_or_default();
+            let client = rpc_try!(SyncClient::new(&server_url).map(|c| c.with_token(token)));
+            let response = rpc_try!(client.create_pairing_code(&device_id).await);
+            Ok(json!({"code":response.code,"expires_at":response.expires_at}))
+        }
+        "devices.revoke" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            let server_url = rpc_try!(db::get_sync_value(&conn, "server_url")).unwrap_or_default();
+            let token = rpc_try!(db::get_sync_value(&conn, "token")).unwrap_or_default();
+            let device_id = rpc_try!(db::get_sync_value(&conn, "device_id")).unwrap_or_default();
+            let target = payload["device_id"].as_str().unwrap_or_default();
+            let client = rpc_try!(SyncClient::new(&server_url).map(|c| c.with_token(token)));
+            rpc_try!(client.revoke_device(&device_id, target).await);
+            Ok(json!({"revoked":true}))
+        }
         "settings.get" => {
             let conn = rpc_try!(db::open(&state.db_path));
             Ok(json!({"value":rpc_try!(db::get_setting(
@@ -364,6 +401,98 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
             let token=hex::encode(bytes);
             rpc_try!(db::set_setting(&conn,"mcp_token",&token));
             Ok(json!({"enabled":rpc_try!(mcp::is_enabled(&conn)),"running":state.mcp.lock().await.is_some(),"token":token,"port":18765,"error":null}))
+        }
+        "transfer.status" => Ok(serde_json::to_value(state.transfer.lock().await.status())
+            .unwrap_or_default()),
+        "transfer.start" => {
+            let (receive, identity) = default_transfer_dirs(&state.data_dir);
+            Ok(serde_json::to_value(
+                rpc_try!(state.transfer.lock().await.start(receive, identity).await),
+            )
+            .unwrap_or_default())
+        }
+        "transfer.stop" => Ok(serde_json::to_value(
+            rpc_try!(state.transfer.lock().await.stop().await),
+        )
+        .unwrap_or_default()),
+        "transfer.devices" => Ok(
+            serde_json::to_value(state.transfer.lock().await.devices().await).unwrap_or_default(),
+        ),
+        "transfer.refresh" => {
+            rpc_try!(state.transfer.lock().await.refresh().await);
+            Ok(json!({"ok":true}))
+        }
+        "transfer.add_manual_ip" => {
+            let result = rpc_try!(
+                state
+                    .transfer
+                    .lock()
+                    .await
+                    .add_manual_ip(
+                        payload["host"].as_str().unwrap_or_default(),
+                        payload["port"].as_u64().unwrap_or(53317) as u16,
+                    )
+                    .await
+            );
+            Ok(serde_json::to_value(result).unwrap_or_default())
+        }
+        "transfer.send" => {
+            let paths: Vec<PathBuf> = rpc_try!(serde_json::from_value(payload["paths"].clone()));
+            let session = rpc_try!(
+                state
+                    .transfer
+                    .lock()
+                    .await
+                    .send(
+                        paths,
+                        payload["fingerprint"].as_str().unwrap_or_default(),
+                        payload["pin"].as_str().map(str::to_owned),
+                    )
+                    .await
+            );
+            Ok(json!({"session_id":session}))
+        }
+        "transfer.pending" => Ok(serde_json::to_value(
+            state.transfer.lock().await.pending_incoming().await,
+        )
+        .unwrap_or_default()),
+        "transfer.respond" => {
+            let ids: Vec<String> =
+                rpc_try!(serde_json::from_value(payload["file_ids"].clone()));
+            rpc_try!(
+                state
+                    .transfer
+                    .lock()
+                    .await
+                    .respond_prepare(
+                        payload["session_id"].as_str().unwrap_or_default(),
+                        ids,
+                    )
+                    .await
+            );
+            Ok(json!({"ok":true}))
+        }
+        "transfer.reject" => {
+            rpc_try!(
+                state
+                    .transfer
+                    .lock()
+                    .await
+                    .reject(payload["session_id"].as_str().unwrap_or_default())
+                    .await
+            );
+            Ok(json!({"ok":true}))
+        }
+        "transfer.cancel" => {
+            rpc_try!(
+                state
+                    .transfer
+                    .lock()
+                    .await
+                    .cancel(payload["session_id"].as_str().unwrap_or_default())
+                    .await
+            );
+            Ok(json!({"ok":true}))
         }
         _ => Err(RpcError {
             code: "METHOD_NOT_FOUND".into(),

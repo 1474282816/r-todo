@@ -14,6 +14,7 @@ rusqlite.workspace = true
 rand.workspace = true
 rtools-domain = { path = "../rtools-domain" }
 rtools-sync-proto = { path = "../rtools-sync-proto" }
+rtodo-transfer-core = { path = "../../transfer-core" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true

@@ -153,4 +153,12 @@ public partial class MainWindow : Window
             await viewModel.ExportJsonAsync(path);
         }
     }
+
+    private async void OnSaveEditedTask(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            await viewModel.SaveEditedTaskAsync();
+        }
+    }
 }

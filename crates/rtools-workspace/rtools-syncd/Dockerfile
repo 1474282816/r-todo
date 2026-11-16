@@ -1,12 +1,11 @@
 FROM rust:1.100-bookworm AS builder
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
-COPY rtools-engine/Cargo.toml ./rtools-engine/Cargo.toml
-COPY rtools-engine/src ./rtools-engine/src
 COPY rtools-domain ./rtools-domain
 COPY rtools-sync-proto ./rtools-sync-proto
 COPY rtools-syncd ./rtools-syncd
-RUN cargo build --release -p rtools-syncd \
+RUN sed -i '/"rtools-engine",/d' Cargo.toml \
+    && cargo build --release -p rtools-syncd \
     && cp target/release/rtools-syncd /usr/local/bin/rtools-syncd
 
 FROM debian:bookworm-slim

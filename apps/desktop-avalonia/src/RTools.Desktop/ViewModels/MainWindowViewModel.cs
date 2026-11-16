@@ -35,6 +35,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     private TaskItem? _selectedTask;
 
     [ObservableProperty]
+    private int _selectedTaskPriorityIndex;
+
+    [ObservableProperty]
     private bool _isSettingsOpen;
 
     [ObservableProperty]
@@ -196,6 +199,26 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     private void EditTask(TaskItem? task)
     {
         SelectedTask = task?.Clone();
+        SelectedTaskPriorityIndex = SelectedTask?.Priority switch
+        {
+            TaskPriority.High => 0,
+            TaskPriority.Low => 2,
+            _ => 1
+        };
+    }
+
+    partial void OnSelectedTaskPriorityIndexChanged(int value)
+    {
+        if (SelectedTask is null)
+        {
+            return;
+        }
+        SelectedTask.Priority = value switch
+        {
+            0 => TaskPriority.High,
+            2 => TaskPriority.Low,
+            _ => TaskPriority.Medium
+        };
     }
 
     [RelayCommand]
@@ -261,6 +284,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         {
             ErrorMessage = ex.Message;
         }
+    }
+
+    public async Task SaveEditedTaskAsync()
+    {
+        if (SelectedTask is null)
+        {
+            return;
+        }
+        await SaveTaskAsync(SelectedTask);
     }
 
     private void OnTasksChanged(object? sender, TaskChangedEventArgs e)

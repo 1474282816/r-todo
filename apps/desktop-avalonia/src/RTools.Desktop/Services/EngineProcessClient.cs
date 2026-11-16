@@ -179,18 +179,21 @@ public sealed class EngineProcessClient : IEngineClient
         await CallAsync("sync.logout", new { }, cancellationToken);
     }
 
-    public Task<IReadOnlyList<DeviceItem>> ListDevicesAsync(
+    public async Task<IReadOnlyList<DeviceItem>> ListDevicesAsync(
         CancellationToken cancellationToken = default)
-        => Task.FromResult<IReadOnlyList<DeviceItem>>([]);
+    {
+        var value = await CallAsync("devices.list", new { }, cancellationToken);
+        return value.Deserialize<IReadOnlyList<DeviceItem>>(JsonOptions) ?? [];
+    }
 
     public Task RevokeDeviceAsync(
         string deviceId,
         CancellationToken cancellationToken = default)
-        => throw new NotSupportedException("设备管理将通过同步服务 API 提供");
+        => SendVoidAsync("devices.revoke", new { device_id = deviceId }, cancellationToken);
 
     public Task<PairingCode> CreatePairingCodeAsync(
         CancellationToken cancellationToken = default)
-        => throw new NotSupportedException("设备配对码将通过同步服务 API 提供");
+        => SendAsync<PairingCode>("devices.pairing_code", new { }, cancellationToken);
 
     public async Task<bool> GetAutostartAsync(
         CancellationToken cancellationToken = default)

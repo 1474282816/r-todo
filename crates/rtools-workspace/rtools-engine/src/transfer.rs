@@ -3,6 +3,7 @@ use rtodo_transfer_core::{TransferConfig, TransferService};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
+use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransferStatus {
@@ -14,6 +15,7 @@ pub struct TransferStatus {
 pub struct TransferRuntime {
     service: Arc<Mutex<Option<TransferService>>>,
     status: TransferStatus,
+    events: broadcast::Sender<rtodo_transfer_core::EventEnvelope>,
 }
 
 impl TransferRuntime {
@@ -25,6 +27,7 @@ impl TransferRuntime {
                 port: rtodo_transfer_core::DEFAULT_PORT,
                 error: None,
             },
+            events: broadcast::channel(256).0,
         }
     }
 
@@ -40,6 +43,7 @@ impl TransferRuntime {
             ..TransferConfig::default()
         };
         let (tx, mut rx) = mpsc::channel(128);
+        let events = self.events.clone();
         match TransferService::start(config, tx).await {
             Ok(service) => {
                 self.status.running = true;
@@ -48,6 +52,7 @@ impl TransferRuntime {
                 *self.service.lock().await = Some(service);
                 tokio::spawn(async move {
                     while let Some(event) = rx.recv().await {
+                        let _ = events.send(event.clone());
                         tracing::info!(?event, "transfer event");
                     }
                 });
@@ -66,6 +71,115 @@ impl TransferRuntime {
         }
         self.status.running = false;
         Ok(self.status.clone())
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<rtodo_transfer_core::EventEnvelope> {
+        self.events.subscribe()
+    }
+
+    pub async fn devices(&self) -> Vec<rtodo_transfer_core::DeviceInfo> {
+        match self.service.lock().await.as_ref() {
+            Some(service) => service.devices().await,
+            None => Vec::new(),
+        }
+    }
+
+    pub async fn refresh(&self) -> Result<(), String> {
+        let guard = self.service.lock().await;
+        let service = guard.as_ref().ok_or("互传服务未启动")?;
+        service.refresh().await.map_err(|e| e.to_string())
+    }
+
+    pub async fn add_manual_ip(
+        &self,
+        host: &str,
+        port: u16,
+    ) -> Result<Option<rtodo_transfer_core::DeviceInfo>, String> {
+        let guard = self.service.lock().await;
+        let service = guard.as_ref().ok_or("互传服务未启动")?;
+        service
+            .add_manual_ip(host, port)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn send(
+        &self,
+        paths: Vec<std::path::PathBuf>,
+        fingerprint: &str,
+        pin: Option<String>,
+    ) -> Result<String, String> {
+        let guard = self.service.lock().await;
+        let service = guard.as_ref().ok_or("互传服务未启动")?;
+        service
+            .send(paths, fingerprint, pin)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn pending_incoming(&self) -> Vec<rtodo_transfer_core::PendingIncoming> {
+        match self.service.lock().await.as_ref() {
+            Some(service) => service.pending_incoming().await,
+            None => Vec::new(),
+        }
+    }
+
+    pub async fn respond_prepare(
+        &self,
+        session_id: &str,
+        file_ids: Vec<String>,
+    ) -> Result<(), String> {
+        let guard = self.service.lock().await;
+        let service = guard.as_ref().ok_or("互传服务未启动")?;
+        service
+            .respond_prepare(session_id, file_ids)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn respond_file(
+        &self,
+        session_id: &str,
+        file_id: &str,
+        path: &std::path::Path,
+    ) -> Result<(), String> {
+        let guard = self.service.lock().await;
+        let service = guard.as_ref().ok_or("互传服务未启动")?;
+        service
+            .respond_file(session_id, file_id, path)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn reject(&self, session_id: &str) -> Result<(), String> {
+        let guard = self.service.lock().await;
+        let service = guard.as_ref().ok_or("互传服务未启动")?;
+        service
+            .reject(session_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn cancel(&self, session_id: &str) -> Result<(), String> {
+        let guard = self.service.lock().await;
+        let service = guard.as_ref().ok_or("互传服务未启动")?;
+        service
+            .cancel(session_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn send_message(
+        &self,
+        fingerprint: &str,
+        message: &rtodo_transfer_core::ChatMessage,
+    ) -> Result<(), String> {
+        let guard = self.service.lock().await;
+        let service = guard.as_ref().ok_or("互传服务未启动")?;
+        service
+            .send_message(fingerprint, message)
+            .await
+            .map_err(|e| e.to_string())
     }
 }
 

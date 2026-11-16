@@ -340,6 +340,43 @@
             </Grid>
         </Border>
     </Border>
+
+    <Border Background="#CC000000"
+            IsVisible="{Binding SelectedTask, Converter={x:Static ObjectConverters.IsNotNull}}"
+            ZIndex="13">
+        <Border Width="340"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Padding="16"
+                CornerRadius="14"
+                Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="编辑任务" FontSize="16" FontWeight="SemiBold" />
+                    <Button Grid.Column="1"
+                            Command="{Binding $parent[Window].DataContext.CloseEditorCommand}"
+                            Content="关闭" />
+                </Grid>
+                <TextBlock Text="标题" />
+                <TextBox Text="{Binding SelectedTask.Title}" />
+                <TextBlock Text="优先级" />
+                <ComboBox SelectedIndex="{Binding $parent[Window].DataContext.SelectedTaskPriorityIndex, Mode=TwoWay}">
+                    <ComboBoxItem Content="高" />
+                    <ComboBoxItem Content="中" />
+                    <ComboBoxItem Content="低" />
+                </ComboBox>
+                <TextBlock Text="提醒时间" />
+                <DatePicker SelectedDate="{Binding SelectedTask.RemindAt}" />
+                <TextBlock Text="提前分钟" />
+                <NumericUpDown Value="{Binding SelectedTask.RemindOffsetMinutes}" Minimum="0" Maximum="1440" />
+                <TextBlock Text="重复规则 RRULE" />
+                <TextBox Text="{Binding SelectedTask.RepeatRule}" />
+                <Button HorizontalAlignment="Right"
+                        Click="OnSaveEditedTask"
+                        Content="保存" />
+            </StackPanel>
+        </Border>
+    </Border>
     </Grid>
 
     <Window.Styles>
