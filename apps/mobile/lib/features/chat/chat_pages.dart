@@ -68,11 +68,15 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
         if (mounted) _open(pending, alias);
       });
     }
-    return Stack(
-      children: [
-        ListView(
-          padding: const EdgeInsets.only(bottom: 16),
-          children: [
+    // ListTile/IconButton 依赖 Material 祖先；ForUI 脚手架本身不提供，
+    // 设备行出现后会触发 Material.of 空值异常。
+    return Material(
+      color: Colors.transparent,
+      child: Stack(
+        children: [
+          ListView(
+            padding: const EdgeInsets.only(bottom: 16),
+            children: [
             _transferStatus(),
             if (controller.isRunning && controller.devices.isEmpty)
               const Padding(
@@ -162,10 +166,11 @@ class _ConversationListPageState extends ConsumerState<ConversationListPage> {
                 onTap: () =>
                     _open(d.fingerprint.toUpperCase(), d.alias),
               ),
-          ],
-        ),
-        if (prompt != null) _trustDialog(prompt),
-      ],
+            ],
+          ),
+          if (prompt != null) _trustDialog(prompt),
+        ],
+      ),
     );
   }
 
