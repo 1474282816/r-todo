@@ -522,6 +522,25 @@ pub fn delete_chat_file_record(conn: &Connection, path: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn attach_chat_file_path(
+    conn: &Connection,
+    message_id: &str,
+    path: &str,
+    status: &str,
+) -> Result<usize> {
+    Ok(conn.execute(
+        "UPDATE messages SET file_path=?1,status=?2,progress=100 WHERE id=?3",
+        params![path, status, message_id],
+    )?)
+}
+
+pub fn clear_conversation_files(conn: &Connection, id: &str) -> Result<usize> {
+    Ok(conn.execute(
+        "UPDATE messages SET file_path=NULL WHERE conversation_id=?1",
+        [id],
+    )?)
+}
+
 pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
     conn.execute(
         "INSERT INTO settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",

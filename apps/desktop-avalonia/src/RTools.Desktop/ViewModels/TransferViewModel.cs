@@ -553,11 +553,9 @@ public sealed partial class TransferViewModel : ObservableObject
                 {
                     PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
                 });
-            if (incoming is not null &&
-                AutoAcceptFavorites &&
-                _trustedFingerprints.Contains(incoming.Device.Fingerprint))
+            if (incoming is not null && AutoAcceptFavorites)
             {
-                _ = AcceptTrustedIncomingAsync(incoming);
+                _ = HandleIncomingWithTrustAsync(incoming);
             }
             else
             {
@@ -604,6 +602,27 @@ public sealed partial class TransferViewModel : ObservableObject
 
     private readonly HashSet<string> _trustedFingerprints =
         new(StringComparer.OrdinalIgnoreCase);
+
+    private async Task HandleIncomingWithTrustAsync(PendingIncoming incoming)
+    {
+        try
+        {
+            if (await _engine.IsChatTrustedAsync(incoming.Device.Fingerprint))
+            {
+                _trustedFingerprints.Add(incoming.Device.Fingerprint);
+                await AcceptTrustedIncomingAsync(incoming);
+            }
+            else
+            {
+                PendingIncoming = incoming;
+            }
+        }
+        catch (Exception ex)
+        {
+            PendingIncoming = incoming;
+            ErrorMessage = ex.Message;
+        }
+    }
 
     private async Task AcceptTrustedIncomingAsync(PendingIncoming incoming)
     {

@@ -638,14 +638,68 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
         .unwrap_or_default()),
         "transfer.respond" => {
             let ids: Vec<String> = rpc_try!(serde_json::from_value(payload["file_ids"].clone()));
+            let session_id = payload["session_id"].as_str().unwrap_or_default();
+            let pending = state.transfer.lock().await.pending_incoming().await;
+            let selected = pending
+                .into_iter()
+                .find(|item| item.session_id == session_id);
+            let accepted: Vec<_> = selected
+                .map(|item| {
+                    let fingerprint = item.device.fingerprint.clone();
+                    let alias = item.device.alias.clone();
+                    item.files
+                        .into_iter()
+                        .filter(|file| ids.contains(&file.id))
+                        .map(|file| (fingerprint.clone(), alias.clone(), file))
+                        .collect()
+                })
+                .unwrap_or_default();
             rpc_try!(
                 state
                     .transfer
                     .lock()
                     .await
-                    .respond_prepare(payload["session_id"].as_str().unwrap_or_default(), ids,)
+                    .respond_prepare(session_id, ids)
                     .await
             );
+            if !accepted.is_empty() {
+                let conn = rpc_try!(db::open(&state.db_path));
+                for (fingerprint, alias, file) in accepted {
+                    let is_image = file
+                        .file_type
+                        .as_deref()
+                        .is_some_and(|kind| kind.starts_with("image/"))
+                        || std::path::Path::new(&file.file_name)
+                            .extension()
+                            .and_then(|value| value.to_str())
+                            .is_some_and(|ext| {
+                                matches!(
+                                    ext.to_ascii_lowercase().as_str(),
+                                    "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
+                                )
+                            });
+                    let mut message = rtodo_transfer_core::ChatMessage::new(
+                        file.id,
+                        fingerprint.to_ascii_uppercase(),
+                        fingerprint.to_ascii_uppercase(),
+                        alias,
+                        if is_image {
+                            rtodo_transfer_core::MessageKind::Image
+                        } else {
+                            rtodo_transfer_core::MessageKind::File
+                        },
+                        file.file_name,
+                    );
+                    message.file_size = Some(file.size);
+                    message.preview = file.preview;
+                    message.status = rtodo_transfer_core::MessageStatus::Pending;
+                    rpc_try!(db::save_chat_message(&conn, &message, "receive"));
+                }
+                let _ = state.events.send(json!({
+                    "event":"chat.changed",
+                    "payload":{"session_id":session_id}
+                }));
+            }
             Ok(json!({"ok":true}))
         }
         "transfer.respond_file" => {
@@ -707,6 +761,10 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
         }
         "chat.clear" => {
             let conn = rpc_try!(db::open(&state.db_path));
+            rpc_try!(db::clear_conversation_files(
+                &conn,
+                payload["conversation_id"].as_str().unwrap_or_default()
+            ));
             rpc_try!(db::clear_conversation(
                 &conn,
                 payload["conversation_id"].as_str().unwrap_or_default()
@@ -761,14 +819,55 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
         "chat.send_files" => {
             let paths: Vec<PathBuf> = rpc_try!(serde_json::from_value(payload["paths"].clone()));
             let fingerprint = payload["fingerprint"].as_str().unwrap_or_default();
+            let send_paths = paths.clone();
             let session = rpc_try!(
                 state
                     .transfer
                     .lock()
                     .await
-                    .send(paths, fingerprint, None)
+                    .send(send_paths, fingerprint, None)
                     .await
             );
+            let self_fingerprint = state.transfer.lock().await.status().fingerprint;
+            let conn = rpc_try!(db::open(&state.db_path));
+            let alias = rpc_try!(db::get_setting(&conn, "transfer_alias"))
+                .unwrap_or_else(|| "rtools".into());
+            for path in &paths {
+                let metadata = std::fs::metadata(path).ok();
+                let is_image = path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .is_some_and(|ext| {
+                        matches!(
+                            ext.to_ascii_lowercase().as_str(),
+                            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
+                        )
+                    });
+                let name = path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("文件")
+                    .to_string();
+                let mut message = rtodo_transfer_core::ChatMessage::new(
+                    uuid::Uuid::new_v4().simple().to_string(),
+                    fingerprint.to_ascii_uppercase(),
+                    self_fingerprint.to_ascii_uppercase(),
+                    alias.clone(),
+                    if is_image {
+                        rtodo_transfer_core::MessageKind::Image
+                    } else {
+                        rtodo_transfer_core::MessageKind::File
+                    },
+                    name,
+                );
+                message.file_path = Some(path.to_string_lossy().into_owned());
+                message.file_size = metadata.map(|value| value.len());
+                rpc_try!(db::save_chat_message(&conn, &message, "send"));
+            }
+            let _ = state.events.send(json!({
+                "event":"chat.changed",
+                "payload":{"conversation_id":fingerprint}
+            }));
             Ok(json!({"session_id":session}))
         }
         "chat.delete_file" => {
@@ -897,6 +996,21 @@ fn spawn_transfer_events(state: Arc<EngineState>) {
                 let _ = state.events.send(json!({
                     "event":"transfer.incoming",
                     "payload":payload
+                }));
+            }
+            if let rtodo_transfer_core::TransferEvent::Completed {
+                file_id,
+                direction: rtodo_transfer_core::Direction::Receive,
+                path: Some(path),
+                ..
+            } = &envelope.event
+            {
+                if let Ok(conn) = db::open(&state.db_path) {
+                    let _ = db::attach_chat_file_path(&conn, file_id, path, "sent");
+                }
+                let _ = state.events.send(json!({
+                    "event":"chat.changed",
+                    "payload":{"file_id":file_id}
                 }));
             }
             let _ = state.events.send(json!({
