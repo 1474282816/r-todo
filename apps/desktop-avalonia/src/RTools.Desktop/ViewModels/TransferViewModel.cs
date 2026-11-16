@@ -83,6 +83,7 @@ public sealed partial class TransferViewModel : ObservableObject
             var status = await _engine.GetTransferStatusAsync();
             ApplyStatus(status);
             await RefreshDevicesAsync();
+            await LoadTrustedPeersAsync();
             await RefreshConversationsAsync();
             var pending = await _engine.GetPendingIncomingAsync();
             PendingIncoming = pending.FirstOrDefault();
@@ -105,6 +106,7 @@ public sealed partial class TransferViewModel : ObservableObject
             if (status.Running)
             {
                 await RefreshDevicesAsync();
+                await LoadTrustedPeersAsync();
             }
         }
         catch (Exception ex)
@@ -242,6 +244,11 @@ public sealed partial class TransferViewModel : ObservableObject
             await _engine.RespondIncomingAsync(
                 PendingIncoming.SessionId,
                 PendingIncoming.Files.Select(file => file.Id).ToList());
+            await _engine.TrustChatPeerAsync(PendingIncoming.Device.Fingerprint);
+            _trustedFingerprints.Add(PendingIncoming.Device.Fingerprint);
+            await _engine.SendTrustMessageAsync(
+                PendingIncoming.Device.Fingerprint,
+                Alias);
             StatusMessage = $"正在接收 {PendingIncoming.Files.Count} 个文件";
             PendingIncoming = null;
         }
@@ -541,11 +548,21 @@ public sealed partial class TransferViewModel : ObservableObject
         }
         else if (type == "incoming")
         {
-            PendingIncoming = payload.Deserialize<PendingIncoming>(
+            var incoming = payload.Deserialize<PendingIncoming>(
                 new JsonSerializerOptions
                 {
                     PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
                 });
+            if (incoming is not null &&
+                AutoAcceptFavorites &&
+                _trustedFingerprints.Contains(incoming.Device.Fingerprint))
+            {
+                _ = AcceptTrustedIncomingAsync(incoming);
+            }
+            else
+            {
+                PendingIncoming = incoming;
+            }
         }
         else if (type == "progress")
         {
@@ -582,6 +599,37 @@ public sealed partial class TransferViewModel : ObservableObject
         else if (type == "error")
         {
             ErrorMessage = payload.GetProperty("message").GetString();
+        }
+    }
+
+    private readonly HashSet<string> _trustedFingerprints =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private async Task AcceptTrustedIncomingAsync(PendingIncoming incoming)
+    {
+        try
+        {
+            await _engine.RespondIncomingAsync(
+                incoming.SessionId,
+                incoming.Files.Select(file => file.Id).ToList());
+            StatusMessage = $"已自动接收 {incoming.Device.Alias} 的文件";
+        }
+        catch (Exception ex)
+        {
+            PendingIncoming = incoming;
+            ErrorMessage = ex.Message;
+        }
+    }
+
+    public async Task LoadTrustedPeersAsync()
+    {
+        _trustedFingerprints.Clear();
+        foreach (var device in Devices)
+        {
+            if (await _engine.IsChatTrustedAsync(device.Fingerprint))
+            {
+                _trustedFingerprints.Add(device.Fingerprint);
+            }
         }
     }
 

@@ -884,6 +884,9 @@ fn spawn_transfer_events(state: Arc<EngineState>) {
             if let rtodo_transfer_core::TransferEvent::Message { message } = &envelope.event {
                 if let Ok(conn) = db::open(&state.db_path) {
                     let _ = db::save_chat_message(&conn, message, "receive");
+                    if message.kind == rtodo_transfer_core::MessageKind::Trust {
+                        let _ = db::trust_peer(&conn, &message.sender);
+                    }
                 }
                 let _ = state.events.send(json!({
                     "event":"chat.changed",

@@ -126,6 +126,10 @@ public interface IEngineClient : IAsyncDisposable
         string fingerprint,
         IReadOnlyList<string> paths,
         CancellationToken cancellationToken = default);
+    Task SendTrustMessageAsync(
+        string fingerprint,
+        string senderAlias,
+        CancellationToken cancellationToken = default);
     Task DeleteChatFileAsync(
         string path,
         CancellationToken cancellationToken = default);

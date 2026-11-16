@@ -482,6 +482,12 @@ public sealed class InMemoryEngineClient : IEngineClient
         CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
+    public Task SendTrustMessageAsync(
+        string fingerprint,
+        string senderAlias,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
     public Task DeleteChatFileAsync(
         string path,
         CancellationToken cancellationToken = default)

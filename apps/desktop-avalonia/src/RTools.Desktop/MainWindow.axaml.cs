@@ -48,6 +48,7 @@ public partial class MainWindow : Window
                 Width = Math.Max(MinWidth, pw);
                 Height = Math.Max(MinHeight, ph);
             }
+            await ApplyAppearanceAsync(engine);
             var enabled = await engine.GetSettingAsync("desktop_widget") == "true";
             if (enabled)
             {
@@ -57,6 +58,28 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             viewModel.ErrorMessage = ex.Message;
+        }
+    }
+
+    public async Task ApplyAppearanceAsync(IEngineClient engine)
+    {
+        var material = await engine.GetSettingAsync("material") ?? "acrylic";
+        TransparencyLevelHint = material switch
+        {
+            "none" => [WindowTransparencyLevel.None],
+            "translucent" => [WindowTransparencyLevel.Transparent],
+            "mica" => [WindowTransparencyLevel.Mica],
+            "mica_alt" => [WindowTransparencyLevel.Mica, WindowTransparencyLevel.AcrylicBlur],
+            _ => [WindowTransparencyLevel.AcrylicBlur, WindowTransparencyLevel.Blur]
+        };
+        var opacityText = await engine.GetSettingAsync("opacity");
+        if (double.TryParse(
+                opacityText,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var opacity))
+        {
+            Opacity = Math.Clamp(opacity, 0.2, 1.0);
         }
     }
 
@@ -360,5 +383,15 @@ public partial class MainWindow : Window
         {
             await viewModel.SaveEditedTaskAsync();
         }
+    }
+
+    private async void OnSaveSettings(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+        await viewModel.Settings.SaveCommand.ExecuteAsync(null);
+        await ApplyAppearanceAsync(viewModel.Engine);
     }
 }

@@ -615,6 +615,29 @@ public sealed class EngineProcessClient : IEngineClient
             new { fingerprint, paths },
             cancellationToken);
 
+    public async Task SendTrustMessageAsync(
+        string fingerprint,
+        string senderAlias,
+        CancellationToken cancellationToken = default)
+    {
+        var message = new ChatMessageItem
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            ConversationId = fingerprint,
+            Sender = "",
+            SenderAlias = senderAlias,
+            Kind = "trust",
+            Body = "trust",
+            CreatedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            Status = "sent",
+            Direction = "send"
+        };
+        await SendVoidAsync(
+            "chat.send_text",
+            new { fingerprint, message },
+            cancellationToken);
+    }
+
     public Task DeleteChatFileAsync(
         string path,
         CancellationToken cancellationToken = default)
