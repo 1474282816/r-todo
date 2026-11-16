@@ -35,6 +35,7 @@ class TodoTask {
   final String? completedAt;
   final String createdAt;
   final String updatedAt;
+  final int revision;
 
   const TodoTask({
     required this.id,
@@ -42,6 +43,7 @@ class TodoTask {
     required this.priority,
     required this.createdAt,
     required this.updatedAt,
+    this.revision = 0,
     this.remindAt,
     this.remindOffsetMin = 15,
     this.repeatRule,
@@ -51,6 +53,42 @@ class TodoTask {
   });
 
   bool get isCompleted => completedAt != null;
+
+  factory TodoTask.fromJson(Map<String, dynamic> json) => TodoTask(
+        id: json['id'] as String,
+        title: json['title'] as String,
+        priority: priorityFromString(json['priority'] as String? ?? 'medium'),
+        remindAt: _nullableString(json['remind_at']),
+        remindOffsetMin: (json['remind_offset_min'] as num?)?.toInt() ?? 15,
+        repeatRule: _nullableString(json['repeat_rule']),
+        sortOrder: (json['sort_order'] as num?)?.toDouble() ?? 0,
+        deleted: json['deleted_at'] != null,
+        completedAt: _nullableString(json['completed_at']),
+        createdAt: json['created_at'] as String,
+        updatedAt: json['updated_at'] as String,
+        revision: (json['revision'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'priority': priorityToString(priority),
+        'remind_at': remindAt,
+        'remind_offset_min': remindOffsetMin,
+        'repeat_rule': repeatRule,
+        'sort_order': sortOrder,
+        'completed_at': completedAt,
+        'deleted': deleted,
+        'deleted_at': deleted ? updatedAt : null,
+        'created_at': createdAt,
+        'updated_at': updatedAt,
+        'revision': revision,
+      };
+
+  static String? _nullableString(Object? value) {
+    final text = value?.toString();
+    return text == null || text.isEmpty ? null : text;
+  }
 
   TodoTask copyWith({
     String? title,
@@ -62,6 +100,7 @@ class TodoTask {
     bool? deleted,
     String? Function()? completedAt,
     String? updatedAt,
+    int? revision,
   }) {
     return TodoTask(
       id: id,
@@ -75,6 +114,7 @@ class TodoTask {
       completedAt: completedAt != null ? completedAt() : this.completedAt,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      revision: revision ?? this.revision,
     );
   }
 
@@ -91,6 +131,7 @@ class TodoTask {
         completedAt: r.completedAt,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
+        revision: r.revision,
       );
 
   /// 域模型 → Drift 写入 companion
@@ -106,5 +147,6 @@ class TodoTask {
         completedAt: Value(completedAt),
         createdAt: createdAt,
         updatedAt: updatedAt,
+        revision: Value(revision),
       );
 }

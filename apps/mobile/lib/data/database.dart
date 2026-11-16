@@ -22,6 +22,7 @@ class Tasks extends Table {
   TextColumn get completedAt => text().nullable()();
   TextColumn get createdAt => text()();
   TextColumn get updatedAt => text()();
+  IntColumn get revision => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -43,7 +44,7 @@ class AppDatabase extends _$AppDatabase implements ChatStore {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration {
@@ -61,6 +62,9 @@ class AppDatabase extends _$AppDatabase implements ChatStore {
         if (from < 3) {
           await createChatTables();
         }
+        if (from < 4) {
+          await m.addColumn(tasks, tasks.revision);
+        }
       },
     );
   }
@@ -77,15 +81,17 @@ class AppDatabase extends _$AppDatabase implements ChatStore {
   Future<List<Task>> getAllTasks() =>
       (select(tasks)..where((t) => t.deleted.equals(false))).get();
 
+  Future<List<Task>> getAllTasksIncludingDeleted() => select(tasks).get();
+
   Future<void> upsertTask(TasksCompanion task) =>
       into(tasks).insertOnConflictUpdate(task);
 
   Future<void> softDeleteTaskById(String id) async {
     final now = DateTime.now().toUtc().toIso8601String();
-    await (update(tasks)..where((t) => t.id.equals(id)))
-        .write(const TasksCompanion(deleted: Value(true)));
-    await (update(tasks)..where((t) => t.id.equals(id)))
-        .write(TasksCompanion(updatedAt: Value(now)));
+    await (update(tasks)..where((t) => t.id.equals(id))).write(TasksCompanion(
+      deleted: const Value(true),
+      updatedAt: Value(now),
+    ));
   }
 
   Future<void> deleteTaskById(String id) =>

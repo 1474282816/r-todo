@@ -83,6 +83,14 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
   late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
       'updated_at', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _revisionMeta =
+      const VerificationMeta('revision');
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+      'revision', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -95,7 +103,8 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
         deleted,
         completedAt,
         createdAt,
-        updatedAt
+        updatedAt,
+        revision
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -166,6 +175,10 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('revision')) {
+      context.handle(_revisionMeta,
+          revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta));
+    }
     return context;
   }
 
@@ -197,6 +210,8 @@ class $TasksTable extends Tasks with TableInfo<$TasksTable, Task> {
           .read(DriftSqlType.string, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}updated_at'])!,
+      revision: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}revision'])!,
     );
   }
 
@@ -218,6 +233,7 @@ class Task extends DataClass implements Insertable<Task> {
   final String? completedAt;
   final String createdAt;
   final String updatedAt;
+  final int revision;
   const Task(
       {required this.id,
       required this.title,
@@ -229,7 +245,8 @@ class Task extends DataClass implements Insertable<Task> {
       required this.deleted,
       this.completedAt,
       required this.createdAt,
-      required this.updatedAt});
+      required this.updatedAt,
+      required this.revision});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -250,6 +267,7 @@ class Task extends DataClass implements Insertable<Task> {
     }
     map['created_at'] = Variable<String>(createdAt);
     map['updated_at'] = Variable<String>(updatedAt);
+    map['revision'] = Variable<int>(revision);
     return map;
   }
 
@@ -272,6 +290,7 @@ class Task extends DataClass implements Insertable<Task> {
           : Value(completedAt),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
+      revision: Value(revision),
     );
   }
 
@@ -290,6 +309,7 @@ class Task extends DataClass implements Insertable<Task> {
       completedAt: serializer.fromJson<String?>(json['completedAt']),
       createdAt: serializer.fromJson<String>(json['createdAt']),
       updatedAt: serializer.fromJson<String>(json['updatedAt']),
+      revision: serializer.fromJson<int>(json['revision']),
     );
   }
   @override
@@ -307,6 +327,7 @@ class Task extends DataClass implements Insertable<Task> {
       'completedAt': serializer.toJson<String?>(completedAt),
       'createdAt': serializer.toJson<String>(createdAt),
       'updatedAt': serializer.toJson<String>(updatedAt),
+      'revision': serializer.toJson<int>(revision),
     };
   }
 
@@ -321,7 +342,8 @@ class Task extends DataClass implements Insertable<Task> {
           bool? deleted,
           Value<String?> completedAt = const Value.absent(),
           String? createdAt,
-          String? updatedAt}) =>
+          String? updatedAt,
+          int? revision}) =>
       Task(
         id: id ?? this.id,
         title: title ?? this.title,
@@ -334,6 +356,7 @@ class Task extends DataClass implements Insertable<Task> {
         completedAt: completedAt.present ? completedAt.value : this.completedAt,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
+        revision: revision ?? this.revision,
       );
   Task copyWithCompanion(TasksCompanion data) {
     return Task(
@@ -352,6 +375,7 @@ class Task extends DataClass implements Insertable<Task> {
           data.completedAt.present ? data.completedAt.value : this.completedAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      revision: data.revision.present ? data.revision.value : this.revision,
     );
   }
 
@@ -368,7 +392,8 @@ class Task extends DataClass implements Insertable<Task> {
           ..write('deleted: $deleted, ')
           ..write('completedAt: $completedAt, ')
           ..write('createdAt: $createdAt, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('revision: $revision')
           ..write(')'))
         .toString();
   }
@@ -385,7 +410,8 @@ class Task extends DataClass implements Insertable<Task> {
       deleted,
       completedAt,
       createdAt,
-      updatedAt);
+      updatedAt,
+      revision);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -400,7 +426,8 @@ class Task extends DataClass implements Insertable<Task> {
           other.deleted == this.deleted &&
           other.completedAt == this.completedAt &&
           other.createdAt == this.createdAt &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.revision == this.revision);
 }
 
 class TasksCompanion extends UpdateCompanion<Task> {
@@ -415,6 +442,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
   final Value<String?> completedAt;
   final Value<String> createdAt;
   final Value<String> updatedAt;
+  final Value<int> revision;
   final Value<int> rowid;
   const TasksCompanion({
     this.id = const Value.absent(),
@@ -428,6 +456,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.completedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.revision = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   TasksCompanion.insert({
@@ -442,6 +471,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     this.completedAt = const Value.absent(),
     required String createdAt,
     required String updatedAt,
+    this.revision = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         title = Value(title),
@@ -460,6 +490,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
     Expression<String>? completedAt,
     Expression<String>? createdAt,
     Expression<String>? updatedAt,
+    Expression<int>? revision,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -474,6 +505,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       if (completedAt != null) 'completed_at': completedAt,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (revision != null) 'revision': revision,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -490,6 +522,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       Value<String?>? completedAt,
       Value<String>? createdAt,
       Value<String>? updatedAt,
+      Value<int>? revision,
       Value<int>? rowid}) {
     return TasksCompanion(
       id: id ?? this.id,
@@ -503,6 +536,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
       completedAt: completedAt ?? this.completedAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      revision: revision ?? this.revision,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -543,6 +577,9 @@ class TasksCompanion extends UpdateCompanion<Task> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<String>(updatedAt.value);
     }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -563,6 +600,7 @@ class TasksCompanion extends UpdateCompanion<Task> {
           ..write('completedAt: $completedAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('revision: $revision, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1014,6 +1052,7 @@ typedef $$TasksTableCreateCompanionBuilder = TasksCompanion Function({
   Value<String?> completedAt,
   required String createdAt,
   required String updatedAt,
+  Value<int> revision,
   Value<int> rowid,
 });
 typedef $$TasksTableUpdateCompanionBuilder = TasksCompanion Function({
@@ -1028,6 +1067,7 @@ typedef $$TasksTableUpdateCompanionBuilder = TasksCompanion Function({
   Value<String?> completedAt,
   Value<String> createdAt,
   Value<String> updatedAt,
+  Value<int> revision,
   Value<int> rowid,
 });
 
@@ -1072,6 +1112,9 @@ class $$TasksTableFilterComposer extends Composer<_$AppDatabase, $TasksTable> {
 
   ColumnFilters<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get revision => $composableBuilder(
+      column: $table.revision, builder: (column) => ColumnFilters(column));
 }
 
 class $$TasksTableOrderingComposer
@@ -1116,6 +1159,9 @@ class $$TasksTableOrderingComposer
 
   ColumnOrderings<String> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+      column: $table.revision, builder: (column) => ColumnOrderings(column));
 }
 
 class $$TasksTableAnnotationComposer
@@ -1159,6 +1205,9 @@ class $$TasksTableAnnotationComposer
 
   GeneratedColumn<String> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
 }
 
 class $$TasksTableTableManager extends RootTableManager<
@@ -1195,6 +1244,7 @@ class $$TasksTableTableManager extends RootTableManager<
             Value<String?> completedAt = const Value.absent(),
             Value<String> createdAt = const Value.absent(),
             Value<String> updatedAt = const Value.absent(),
+            Value<int> revision = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               TasksCompanion(
@@ -1209,6 +1259,7 @@ class $$TasksTableTableManager extends RootTableManager<
             completedAt: completedAt,
             createdAt: createdAt,
             updatedAt: updatedAt,
+            revision: revision,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1223,6 +1274,7 @@ class $$TasksTableTableManager extends RootTableManager<
             Value<String?> completedAt = const Value.absent(),
             required String createdAt,
             required String updatedAt,
+            Value<int> revision = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               TasksCompanion.insert(
@@ -1237,10 +1289,15 @@ class $$TasksTableTableManager extends RootTableManager<
             completedAt: completedAt,
             createdAt: createdAt,
             updatedAt: updatedAt,
+            revision: revision,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<$TasksTable, Task>(table),
+                    BaseReferences<_$AppDatabase, $TasksTable, Task>(
+                        db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: null,
         ));
@@ -1444,7 +1501,11 @@ class $$PendingOpsTableTableManager extends RootTableManager<
             lastError: lastError,
           ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map((e) => (
+                    e.readTable<$PendingOpsTable, PendingOp>(table),
+                    BaseReferences<_$AppDatabase, $PendingOpsTable, PendingOp>(
+                        db, table, e)
+                  ))
               .toList(),
           prefetchHooksCallback: null,
         ));

@@ -22,9 +22,6 @@ dependencies:
   # 桌面小组件桥接（Android / iOS）
   home_widget: ^0.9.0
 
-  # PocketBase 官方 Dart SDK（对齐服务端 0.22）
-  pocketbase: ^0.22.0
-
   # 凭据本地存储
   shared_preferences: ^2.3.2
 

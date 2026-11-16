@@ -44,10 +44,15 @@ class _HomeViewState extends ConsumerState<HomeView> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('发现新版本'),
-        content: Text('R待办 v${info.version} 已发布${info.notes.isNotEmpty ? '\n\n${info.notes}' : ''}\n\n是否下载更新？'),
+        content: Text(
+            'R待办 v${info.version} 已发布${info.notes.isNotEmpty ? '\n\n${info.notes}' : ''}\n\n是否下载更新？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('稍后')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('立即更新')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('稍后')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('立即更新')),
         ],
       ),
     );
@@ -77,7 +82,8 @@ class _HomeViewState extends ConsumerState<HomeView> {
                     style: const TextStyle(fontSize: 12)),
                 if (e.isNotEmpty) ...[
                   const Gap(8),
-                  Text(e, style: const TextStyle(fontSize: 12, color: Colors.red)),
+                  Text(e,
+                      style: const TextStyle(fontSize: 12, color: Colors.red)),
                 ],
               ],
             ),
@@ -105,8 +111,12 @@ class _HomeViewState extends ConsumerState<HomeView> {
             title: const Text('需要安装权限'),
             content: const Text('请允许“R待办”安装未知来源应用，然后重新下载安装。'),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('去设置')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('取消')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('去设置')),
             ],
           ),
         );
@@ -205,9 +215,7 @@ class _QuickAddBar extends StatelessWidget {
                 height: 18,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: priority == p
-                      ? priorityColors[p]
-                      : Colors.transparent,
+                  color: priority == p ? priorityColors[p] : Colors.transparent,
                   border: Border.all(color: priorityColors[p]!, width: 1.5),
                 ),
               ),
@@ -262,7 +270,7 @@ class _TaskList extends ConsumerWidget {
           },
         );
       },
-      onReorder: (oldIndex, newIndex) {
+      onReorderItem: (oldIndex, newIndex) {
         if (newIndex > active.length) newIndex = active.length;
         if (oldIndex >= active.length) return; // 只允许未完成区内拖
         if (newIndex > oldIndex) newIndex -= 1;
@@ -282,8 +290,7 @@ class _TaskList extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
             child: Container(height: 1, color: const Color(0x11000000)),
           ),
-        for (final t in done)
-          _TaskRow(key: ValueKey(t.id), task: t),
+        for (final t in done) _TaskRow(key: ValueKey(t.id), task: t),
       ],
     );
   }
@@ -293,6 +300,7 @@ class _TaskRow extends ConsumerWidget {
   const _TaskRow({super.key, required this.task, this.dragIndex});
 
   final TodoTask task;
+
   /// 未完成任务传入其在 active 列表的索引（用于拖拽）；已完成任务传 null（不可拖）
   final int? dragIndex;
 
@@ -318,117 +326,121 @@ class _TaskRow extends ConsumerWidget {
         onDismissed: (_) => notifier.remove(task.id),
         confirmDismiss: (_) async {
           return await showDialog<bool>(
-            context: context,
-            builder: (ctx) => Dialog(
-              backgroundColor: Colors.transparent,
-              child: FCard(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '确认删除',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                      ),
-                      const Gap(12),
-                      Text('确定要删除「${task.title}」吗？'),
-                      const Gap(20),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+                context: context,
+                builder: (ctx) => Dialog(
+                  backgroundColor: Colors.transparent,
+                  child: FCard(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          FButton(
-                            variant: FButtonVariant.outline,
-                            mainAxisSize: MainAxisSize.min,
-                            onPress: () => Navigator.of(ctx).pop(false),
-                            child: const Text('取消'),
+                          const Text(
+                            '确认删除',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.w600),
                           ),
-                          const Gap(8),
-                        GestureDetector(
-                          onTap: () => Navigator.of(ctx).pop(true),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEF4444),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Text(
-                              '删除',
-                              style: TextStyle(color: Colors.white),
-                            ),
+                          const Gap(12),
+                          Text('确定要删除「${task.title}」吗？'),
+                          const Gap(20),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              FButton(
+                                variant: FButtonVariant.outline,
+                                mainAxisSize: MainAxisSize.min,
+                                onPress: () => Navigator.of(ctx).pop(false),
+                                child: const Text('取消'),
+                              ),
+                              const Gap(8),
+                              GestureDetector(
+                                onTap: () => Navigator.of(ctx).pop(true),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEF4444),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    '删除',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ) ?? false;
+              ) ??
+              false;
         },
         child: FTile(
-        prefix: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 3,
-              height: 24,
-              decoration: BoxDecoration(
-                color: priorityColors[task.priority],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const Gap(8),
-            GestureDetector(
-              onTap: () => notifier.toggleComplete(task.id),
-              child: Container(
-                width: 22,
-                height: 22,
+          prefix: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 3,
+                height: 24,
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color:
-                      completed ? const Color(0xFF22C55E) : Colors.transparent,
-                  border: Border.all(
+                  color: priorityColors[task.priority],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Gap(8),
+              GestureDetector(
+                onTap: () => notifier.toggleComplete(task.id),
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
                     color: completed
                         ? const Color(0xFF22C55E)
-                        : const Color(0xFFD4D4D8),
-                    width: 2,
+                        : Colors.transparent,
+                    border: Border.all(
+                      color: completed
+                          ? const Color(0xFF22C55E)
+                          : const Color(0xFFD4D4D8),
+                      width: 2,
+                    ),
                   ),
+                  child: completed
+                      ? const Icon(Icons.check, size: 14, color: Colors.white)
+                      : null,
                 ),
-                child: completed
-                    ? const Icon(Icons.check, size: 14, color: Colors.white)
-                    : null,
               ),
+            ],
+          ),
+          title: Text(
+            task.title,
+            style: TextStyle(
+              decoration: completed ? TextDecoration.lineThrough : null,
+              color: completed ? const Color(0xFF9CA3AF) : null,
             ),
-          ],
-        ),
-        title: Text(
-          task.title,
-          style: TextStyle(
-            decoration: completed ? TextDecoration.lineThrough : null,
-            color: completed ? const Color(0xFF9CA3AF) : null,
+          ),
+          suffix: dragIndex != null
+              ? ReorderableDragStartListener(
+                  index: dragIndex!,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                    child: Icon(Icons.drag_indicator,
+                        size: 20, color: Color(0xFFCCCCCC)),
+                  ),
+                )
+              : null,
+          onPress: () => showFSheet(
+            context: context,
+            side: FLayout.btt,
+            draggable: false,
+            mainAxisMaxRatio: null,
+            builder: (_) => TaskEditorSheet(task: task),
           ),
         ),
-        suffix: dragIndex != null
-            ? ReorderableDragStartListener(
-                index: dragIndex!,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                  child: Icon(Icons.drag_indicator,
-                      size: 20, color: Color(0xFFCCCCCC)),
-                ),
-              )
-            : null,
-        onPress: () => showFSheet(
-          context: context,
-          side: FLayout.btt,
-          draggable: false,
-          mainAxisMaxRatio: null,
-          builder: (_) => TaskEditorSheet(task: task),
-        ),
-      ),
       ),
     );
   }
@@ -446,7 +458,8 @@ class _EmptyState extends StatelessWidget {
           Text('今天没有任务',
               style: TextStyle(fontSize: 15, color: Color(0xFF9CA3AF))),
           Gap(6),
-          Text('在上方添加一条', style: TextStyle(fontSize: 12, color: Color(0xFFBBBBBB))),
+          Text('在上方添加一条',
+              style: TextStyle(fontSize: 12, color: Color(0xFFBBBBBB))),
         ],
       ),
     );

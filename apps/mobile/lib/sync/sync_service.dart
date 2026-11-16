@@ -1,11 +1,11 @@
 import 'dart:async';
-
-import 'package:pocketbase/pocketbase.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/database.dart';
 import '../data/task.dart';
+import 'sync_api.dart';
 
 class SyncService {
   SyncService._(this._db);
@@ -21,85 +21,83 @@ class SyncService {
   static SyncService? get maybe => _maybe;
 
   final AppDatabase _db;
-  PocketBase? _pb;
-  UnsubscribeFunc? _unsub;
+  SyncApi? _api;
+  Timer? _timer;
+  Timer? _realtimeTimer;
 
-  static const _kUrl = 'r-todo/sync/url';
-  static const _kAuth = 'r-todo/sync/auth';
+  static const _kUrl = 'r-tools/sync/url';
+  static const _kToken = 'r-tools/sync/token';
+  static const _kDeviceId = 'r-tools/sync/device-id';
+  static const _kDeviceName = 'r-tools/sync/device-name';
+  static const _kCursor = 'r-tools/sync/cursor';
+  static const _kLastSync = 'r-tools/sync/last-sync';
 
   void Function()? onRemoteChange;
 
   bool connected = false;
   bool syncing = false;
   bool flushing = false;
-  String? username;
+  String? deviceName;
   String? serverUrl;
   String? lastSyncAt;
   String? error;
+  int cursor = 0;
+  int pending = 0;
 
   final _statusController = StreamController<void>.broadcast();
   Stream<void> get statusStream => _statusController.stream;
   void _notify() => _statusController.add(null);
 
-  bool get isLoggedIn => _pb?.authStore.isValid ?? false;
+  bool get isLoggedIn => _api?.token != null;
 
   Future<void> restoreSession() async {
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString(_kUrl);
-    final token = prefs.getString(_kAuth);
-    if (url == null || token == null) return;
-    try {
-      _pb = PocketBase(url);
-      _pb!.authStore.save(token, null);
-      if (!_pb!.authStore.isValid) { _pb = null; return; }
-      try { await _pb!.collection('users').authRefresh(); } catch (_) {}
-      await _persist();
-      connected = true;
-      username = _currentUsername();
-      serverUrl = url;
+    final token = prefs.getString(_kToken);
+    final deviceId = prefs.getString(_kDeviceId);
+    final name = prefs.getString(_kDeviceName);
+    cursor = prefs.getInt(_kCursor) ?? 0;
+    lastSyncAt = prefs.getString(_kLastSync);
+    pending = (await _db.listPendingOps()).length;
+    if (url == null || token == null || deviceId == null) {
       _notify();
-      unawaited(fullSync());
-      unawaited(flushPendingOps());
-      _subscribeRealtime();
-    } catch (e) {
-      _pb = null;
-      error = e.toString();
-      _notify();
+      return;
     }
+    serverUrl = url;
+    deviceName = name;
+    _api = SyncApi(baseUrl: url, token: token);
+    connected = true;
+    _notify();
+    _startRealtimePolling();
+    unawaited(syncNow());
   }
 
-  String? _currentUsername() {
-    final rec = _pb?.authStore.record;
-    return rec?.getStringValue('username').isNotEmpty == true
-        ? rec!.getStringValue('username')
-        : rec?.getStringValue('email');
-  }
-
-  Future<void> _persist() async {
-    if (_pb == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kUrl, _pb!.baseURL);
-    await prefs.setString(_kAuth, _pb!.authStore.token);
-  }
-
-  Future<void> login(String url, String identity, String password) async {
+  Future<void> pair({
+    required String url,
+    required String code,
+    required String name,
+  }) async {
     syncing = true;
     error = null;
     _notify();
     try {
       final normalized = url.replaceAll(RegExp(r'/$'), '');
-      _pb = PocketBase(normalized);
-      await _pb!.collection('users').authWithPassword(identity, password);
-      await _persist();
-      connected = true;
-      username = _currentUsername();
+      final api = SyncApi(baseUrl: normalized);
+      final response = await api.pair(code, name);
+      final token = response['token'] as String;
+      final deviceId = response['device_id'] as String;
+      _api = SyncApi(baseUrl: normalized, token: token);
       serverUrl = normalized;
-      _notify();
-      await fullSync();
-      await flushPendingOps();
-      _subscribeRealtime();
+      deviceName = name;
+      connected = true;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kUrl, normalized);
+      await prefs.setString(_kToken, token);
+      await prefs.setString(_kDeviceId, deviceId);
+      await prefs.setString(_kDeviceName, name);
+      _startRealtimePolling();
+      await syncNow();
     } catch (e) {
-      _pb = null;
       connected = false;
       error = e.toString();
       rethrow;
@@ -110,212 +108,265 @@ class SyncService {
   }
 
   Future<void> logout() async {
-    _unsub?.call();
-    _unsub = null;
-    _pb?.authStore.clear();
-    _pb = null;
+    _timer?.cancel();
+    _realtimeTimer?.cancel();
+    _timer = null;
+    _realtimeTimer = null;
+    _api = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kUrl);
-    await prefs.remove(_kAuth);
+    await prefs.remove(_kToken);
+    await prefs.remove(_kDeviceId);
+    await prefs.remove(_kDeviceName);
     connected = false;
-    username = null;
     serverUrl = null;
-    lastSyncAt = null;
+    deviceName = null;
     error = null;
     _notify();
   }
 
-  Map<String, dynamic> _toRemote(TodoTask t) {
-    final rec = _pb!.authStore.record!;
-    return {
-      'id': t.id,
-      'user': rec.id,
-      'title': t.title,
-      'priority': priorityToString(t.priority),
-      'remind_at': t.remindAt ?? '',
-      'remind_offset_min': t.remindOffsetMin,
-      'repeat_rule': t.repeatRule ?? '',
-      'sort_order': t.sortOrder,
-      'deleted': t.deleted,
-      'completed_at': t.completedAt ?? '',
-    };
-  }
-
-  TodoTask _fromRemote(RecordModel r) {
-    String? nn(String key) {
-      final v = r.getStringValue(key);
-      return v.isEmpty ? null : v;
-    }
-    return TodoTask(
-      id: r.id,
-      title: r.getStringValue('title'),
-      priority: priorityFromString(r.getStringValue('priority')),
-      remindAt: nn('remind_at'),
-      remindOffsetMin: r.getIntValue('remind_offset_min'),
-      repeatRule: nn('repeat_rule'),
-      sortOrder: r.getDoubleValue('sort_order'),
-      deleted: r.getBoolValue('deleted'),
-      completedAt: nn('completed_at'),
-      createdAt: r.getStringValue('created'),
-      updatedAt: r.getStringValue('updated'),
-    );
-  }
-
-  Future<void> fullSync() async {
-    if (_pb == null || !_pb!.authStore.isValid) return;
+  Future<void> syncNow() async {
+    if (_api == null) return;
+    if (syncing) return;
     syncing = true;
     error = null;
     _notify();
     try {
-      final localRows = await _db.getAllTasks();
-      final local = localRows.map(TodoTask.fromRow).toList();
-      final remote = await _pb!.collection('tasks').getFullList(batch: 500);
-      final remoteMap = {for (final r in remote) r.id: r};
-      final localMap = {for (final t in local) t.id: t};
-      for (final t in local) {
-        if (!remoteMap.containsKey(t.id)) {
-          await _pb!.collection('tasks').create(body: _toRemote(t));
-        }
-      }
-      for (final r in remote) {
-        if (!localMap.containsKey(r.id)) {
-          await _db.upsertTask(_fromRemote(r).toCompanion());
-        }
-      }
-      for (final t in local) {
-        final r = remoteMap[t.id];
-        if (r == null) continue;
-        final lt = DateTime.parse(t.updatedAt).millisecondsSinceEpoch;
-        final rt = DateTime.parse(r.getStringValue('updated')).millisecondsSinceEpoch;
-        if (lt > rt) {
-          await _pb!.collection('tasks').update(t.id, body: _toRemote(t));
-        } else if (rt > lt) {
-          await _db.upsertTask(_fromRemote(r).toCompanion());
-        }
-      }
-      lastSyncAt = DateTime.now().toIso8601String();
+      await flushPendingOps();
+      await _pullChanges();
+      connected = true;
       error = null;
-      onRemoteChange?.call();
     } catch (e) {
+      connected = false;
       error = e.toString();
+      if (e is SyncApiException && e.tokenInvalid) {
+        _timer?.cancel();
+        _realtimeTimer?.cancel();
+      }
       rethrow;
     } finally {
       syncing = false;
+      pending = (await _db.listPendingOps()).length;
       _notify();
     }
   }
 
   Future<void> flushPendingOps() async {
-    if (_pb == null || !_pb!.authStore.isValid) return;
+    final api = _api;
+    if (api == null) return;
+    final ops = await _db.listPendingOps();
+    if (ops.isEmpty) {
+      pending = 0;
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final deviceId = prefs.getString(_kDeviceId);
+    if (deviceId == null) return;
     flushing = true;
     _notify();
     try {
-      final ops = await _db.listPendingOps();
-      if (ops.isEmpty) return;
       for (final op in ops) {
-        try {
-          if (op.opType == 'create') {
-            await _pb!.collection('tasks').create(body: jsonDecode(op.payload ?? '{}'));
-          } else if (op.opType == 'update') {
-            await _pb!.collection('tasks').update(op.recordId, body: jsonDecode(op.payload ?? '{}'));
-          } else if (op.opType == 'delete') {
-            await _pb!.collection('tasks').update(op.recordId, body: {'deleted': true});
+        final payload = jsonDecode(op.payload ?? '{}') as Map<String, dynamic>;
+        var baseRevision = (payload['revision'] as num?)?.toInt() ?? 0;
+        var operation = _buildOperation(
+          operationId: 'mobile-${op.id}-${op.createdAt}',
+          taskId: op.recordId,
+          baseRevision: baseRevision,
+          payload: payload,
+        );
+        var result = await _submitOperation(api, deviceId, operation);
+
+        // 本地新建任务或旧数据库中的任务 revision 为 0。若服务端已经
+        // 找不到该任务，说明本地元数据落后，使用新的操作 ID 重试创建。
+        if (!result.accepted && result.error == 'TASK_NOT_FOUND') {
+          baseRevision = 0;
+          operation = _buildOperation(
+            operationId:
+                'mobile-create-${op.id}-${DateTime.now().microsecondsSinceEpoch}',
+            taskId: op.recordId,
+            baseRevision: baseRevision,
+            payload: payload,
+          );
+          result = await _submitOperation(api, deviceId, operation);
+        }
+
+        if (result.accepted) {
+          if (result.task != null) {
+            final task = TodoTask.fromJson(result.task!);
+            await _db.upsertTask(task.toCompanion());
           }
           await _db.removePendingOp(op.id);
-        } on ClientException catch (e) {
-          if (e.statusCode == 0) break;
-          if (e.statusCode == 400 || e.statusCode == 404) {
-            await _db.markPendingOpError(op.id, e.toString());
-            continue;
-          }
-          break;
+        } else {
+          await _db.markPendingOpError(
+            op.id,
+            result.error ?? 'UNKNOWN_OPERATION_ERROR',
+          );
         }
       }
-    } catch (_) {
+      cursor = ((await api.changes(
+            deviceId: deviceId,
+            after: cursor,
+          ))['cursor'] as num?)
+              ?.toInt() ??
+          cursor;
+    } catch (e) {
+      error = e.toString();
+      rethrow;
     } finally {
       flushing = false;
       _notify();
     }
   }
 
-  Future<void> pushTask(TodoTask t) async {
-    if (_pb == null || !_pb!.authStore.isValid) return;
-    try {
-      try {
-        await _pb!.collection('tasks').update(t.id, body: _toRemote(t));
-      } on ClientException catch (e) {
-        if (e.statusCode == 404) {
-          await _pb!.collection('tasks').create(body: _toRemote(t));
-        } else {
-          rethrow;
-        }
-      }
-      lastSyncAt = DateTime.now().toIso8601String();
-      _notify();
-    } catch (e) {
-      error = e.toString();
-      _notify();
-      await _db.enqueueOp('update', t.id, payload: jsonEncode(_toRemote(t)));
+  Future<void> _pullChanges() async {
+    final api = _api;
+    if (api == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    final deviceId = prefs.getString(_kDeviceId);
+    if (deviceId == null) return;
+    final response = await api.changes(deviceId: deviceId, after: cursor);
+    final tasks =
+        (response['tasks'] as List? ?? const []).cast<Map<String, dynamic>>();
+    for (final json in tasks) {
+      final task = TodoTask.fromJson(json);
+      await _db.upsertTask(task.toCompanion());
+    }
+    cursor = (response['cursor'] as num?)?.toInt() ?? cursor;
+    lastSyncAt = DateTime.now().toUtc().toIso8601String();
+    await prefs.setInt(_kCursor, cursor);
+    await prefs.setString(_kLastSync, lastSyncAt!);
+    onRemoteChange?.call();
+  }
+
+  Future<void> pushTask(TodoTask task) async {
+    await _db.enqueueOp(
+      task.revision == 0 ? 'create' : 'update',
+      task.id,
+      payload: jsonEncode(task.toJson()),
+    );
+    pending = (await _db.listPendingOps()).length;
+    _notify();
+    if (connected) {
+      unawaited(syncNow().catchError((_) {}));
     }
   }
 
   Future<void> deleteRemote(String id) async {
-    if (_pb == null || !_pb!.authStore.isValid) return;
-    try {
-      await _pb!.collection('tasks').update(id, body: {'deleted': true});
-    } on ClientException catch (e) {
-      if (e.statusCode == 404) {
-        await _db.enqueueOp('delete', id);
-        return;
-      }
-      await _db.enqueueOp('delete', id);
-      error = e.toString();
-      _notify();
+    final local = (await _db.getAllTasksIncludingDeleted()).firstWhere(
+      (row) => row.id == id,
+      orElse: () => throw StateError('task not found'),
+    );
+    final task = TodoTask.fromRow(local).copyWith(
+      deleted: true,
+      updatedAt: DateTime.now().toUtc().toIso8601String(),
+    );
+    await _db.enqueueOp('delete', id, payload: jsonEncode(task.toJson()));
+    pending = (await _db.listPendingOps()).length;
+    _notify();
+    if (connected) {
+      unawaited(syncNow().catchError((_) {}));
     }
   }
 
-  void _subscribeRealtime() {
-    if (_pb == null) return;
-    _unsub?.call();
-    // PB_CONNECT: 每次连接/重连触发全量同步
-_pb!.realtime.subscribe('PB_CONNECT', (e) async {
-      await fullSync().catchError((_) {});
-      await flushPendingOps().catchError((_) {});
-    }).then((_) {}).catchError((_) {});
-    _pb!.collection('tasks').subscribe('*', (e) async {
-      try {
-        if (e.action == 'delete') {
-          await _db.softDeleteTaskById(e.record!.id);
-        } else if (e.record != null) {
-          final t = _fromRemote(e.record!);
-          if (t.deleted) {
-            final existing = (await _db.getAllTasks()).where((x) => x.id == t.id).toList();
-            if (existing.isNotEmpty) {
-              final localUpdated = DateTime.parse(existing.first.updatedAt).millisecondsSinceEpoch;
-              final remoteUpdated = DateTime.parse(t.updatedAt).millisecondsSinceEpoch;
-              if (remoteUpdated > localUpdated) {
-                await _db.softDeleteTaskById(t.id);
-              }
-            } else {
-              await _db.upsertTask(t.toCompanion());
-            }
-          } else {
-            final existing = (await _db.getAllTasks()).where((x) => x.id == t.id).toList();
-            if (existing.isEmpty) {
-              await _db.upsertTask(t.toCompanion());
-            } else {
-              final localUpdated = DateTime.parse(existing.first.updatedAt).millisecondsSinceEpoch;
-              final remoteUpdated = DateTime.parse(t.updatedAt).millisecondsSinceEpoch;
-              if (remoteUpdated > localUpdated) {
-                await _db.upsertTask(t.toCompanion());
-              }
-            }
-          }
-        }
-        onRemoteChange?.call();
-      } catch (_) {}
-    }).then((unsub) {
-      _unsub = unsub;
-    }).catchError((Object _) {});
+  Map<String, dynamic> _operationPayload(Map<String, dynamic> payload) => {
+        'title': payload['title'],
+        'priority': payload['priority'],
+        'remind_at': payload['remind_at'],
+        'remind_offset_min': payload['remind_offset_min'],
+        'repeat_rule': payload['repeat_rule'],
+        'sort_order': payload['sort_order'],
+        'completed_at': payload['completed_at'],
+        'deleted_at': payload['deleted'] == true
+            ? payload['updated_at']
+            : payload['deleted_at'],
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+
+  Map<String, dynamic> _buildOperation({
+    required String operationId,
+    required String taskId,
+    required int baseRevision,
+    required Map<String, dynamic> payload,
+  }) {
+    final common = <String, dynamic>{
+      'operation_id': operationId,
+      'task_id': taskId,
+      'base_revision': baseRevision,
+      'client_updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    if (baseRevision == 0) {
+      return {
+        ...common,
+        'create': {
+          'id': taskId,
+          'title': payload['title'],
+          'priority': payload['priority'],
+          'remind_at': payload['remind_at'],
+          'remind_offset_min': payload['remind_offset_min'],
+          'repeat_rule': payload['repeat_rule'],
+          'sort_order': payload['sort_order'],
+          'completed_at': payload['completed_at'],
+          'deleted_at': payload['deleted'] == true
+              ? payload['updated_at']
+              : payload['deleted_at'],
+          'created_at': payload['created_at'],
+          'updated_at': payload['updated_at'],
+          'revision': 0,
+        },
+      };
+    }
+    return {...common, 'patch': _operationPayload(payload)};
   }
+
+  Future<_OperationResult> _submitOperation(
+    SyncApi api,
+    String deviceId,
+    Map<String, dynamic> operation,
+  ) async {
+    final response = await api.operations(deviceId, {
+      'device_id': deviceId,
+      'operations': [operation],
+    });
+    final results =
+        (response['results'] as List? ?? const []).cast<Map<String, dynamic>>();
+    if (results.isEmpty) {
+      return const _OperationResult(
+        accepted: false,
+        error: 'EMPTY_OPERATION_RESPONSE',
+      );
+    }
+    final result = results.first;
+    return _OperationResult(
+      accepted: result['accepted'] == true,
+      task: result['task'] is Map
+          ? Map<String, dynamic>.from(result['task'] as Map)
+          : null,
+      error: result['error']?.toString(),
+    );
+  }
+
+  void _startRealtimePolling() {
+    _realtimeTimer?.cancel();
+    _realtimeTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (connected && !syncing) {
+        unawaited(syncNow().catchError((_) {}));
+      }
+    });
+    _timer?.cancel();
+    _timer = Timer(const Duration(seconds: 1), () {
+      unawaited(syncNow().catchError((_) {}));
+    });
+  }
+}
+
+class _OperationResult {
+  const _OperationResult({
+    required this.accepted,
+    this.task,
+    this.error,
+  });
+
+  final bool accepted;
+  final Map<String, dynamic>? task;
+  final String? error;
 }

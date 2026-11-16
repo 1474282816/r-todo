@@ -15,9 +15,10 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
-  final _urlController = TextEditingController(text: 'http://192.168.10.10:8090');
-  final _userController = TextEditingController();
-  final _pwdController = TextEditingController();
+  final _urlController =
+      TextEditingController(text: 'https://todo.renrunqi.com');
+  final _codeController = TextEditingController();
+  final _deviceController = TextEditingController(text: '手机');
   bool _busy = false;
   String? _error;
 
@@ -34,16 +35,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void dispose() {
     _urlController.dispose();
-    _userController.dispose();
-    _pwdController.dispose();
+    _codeController.dispose();
+    _deviceController.dispose();
     super.dispose();
   }
 
   Future<void> _login() async {
     if (_urlController.text.isEmpty ||
-        _userController.text.isEmpty ||
-        _pwdController.text.isEmpty) {
-      setState(() => _error = '请填写 URL、用户名、密码');
+        _codeController.text.isEmpty ||
+        _deviceController.text.isEmpty) {
+      setState(() => _error = '请填写 URL、接入码、设备名称');
       return;
     }
     setState(() {
@@ -51,13 +52,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _error = null;
     });
     try {
-      await _sync.login(
-        _urlController.text.trim(),
-        _userController.text.trim(),
-        _pwdController.text,
+      await _sync.pair(
+        url: _urlController.text.trim(),
+        code: _codeController.text.trim(),
+        name: _deviceController.text.trim(),
       );
       await ref.read(taskListProvider.notifier).refreshFromDb();
-      _pwdController.clear();
+      _codeController.clear();
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -85,98 +86,100 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     fontWeight: FontWeight.w600,
                     color: colors.foreground)),
             const Gap(12),
-          if (_sync.connected) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0x11000000),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.cloud_done,
-                          size: 14, color: Color(0xFF22C55E)),
-                      const Gap(6),
-                      Text(_sync.username ?? '已连接',
-                          style: const TextStyle(fontSize: 13)),
-                    ],
-                  ),
-                  const Gap(4),
-                  Text(_sync.serverUrl ?? '',
-                      style: const TextStyle(
-                          fontSize: 11, color: Color(0xFF9CA3AF))),
-                  if (_sync.lastSyncAt != null) ...[
-                    const Gap(2),
-                    Text('上次同步：${formatDateTime(_sync.lastSyncAt)}',
+            if (_sync.connected) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0x11000000),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.cloud_done,
+                            size: 14, color: Color(0xFF22C55E)),
+                        const Gap(6),
+                        Text(_sync.deviceName ?? '已连接',
+                            style: const TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                    const Gap(4),
+                    Text(_sync.serverUrl ?? '',
                         style: const TextStyle(
-                            fontSize: 10, color: Color(0xFFBBBBBB))),
+                            fontSize: 11, color: Color(0xFF9CA3AF))),
+                    if (_sync.lastSyncAt != null) ...[
+                      const Gap(2),
+                      Text('上次同步：${formatDateTime(_sync.lastSyncAt)}',
+                          style: const TextStyle(
+                              fontSize: 10, color: Color(0xFFBBBBBB))),
+                    ],
                   ],
+                ),
+              ),
+              const Gap(8),
+              Row(
+                children: [
+                  FButton(
+                    variant: FButtonVariant.outline,
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: _busy
+                        ? null
+                        : () async {
+                            setState(() => _busy = true);
+                            try {
+                              await _sync.syncNow();
+                              await ref
+                                  .read(taskListProvider.notifier)
+                                  .refreshFromDb();
+                            } finally {
+                              if (mounted) setState(() => _busy = false);
+                            }
+                          },
+                    child: const Text('立即同步'),
+                  ),
+                  const Gap(8),
+                  FButton(
+                    variant: FButtonVariant.outline,
+                    mainAxisSize: MainAxisSize.min,
+                    onPress: () async {
+                      await _sync.logout();
+                      if (mounted) setState(() {});
+                    },
+                    child: const Text('退出同步'),
+                  ),
                 ],
               ),
-            ),
-            const Gap(8),
-            Row(
-              children: [
-                FButton(
-                  variant: FButtonVariant.outline,
-                  mainAxisSize: MainAxisSize.min,
-                  onPress: _busy
-                      ? null
-                      : () async {
-                          setState(() => _busy = true);
-                          try {
-                            await _sync.fullSync();
-                            await ref
-                                .read(taskListProvider.notifier)
-                                .refreshFromDb();
-                          } finally {
-                            if (mounted) setState(() => _busy = false);
-                          }
-                        },
-                  child: const Text('立即同步'),
-                ),
-                const Gap(8),
-                FButton(
-                  variant: FButtonVariant.outline,
-                  mainAxisSize: MainAxisSize.min,
-                  onPress: () async {
-                    await _sync.logout();
-                    if (mounted) setState(() {});
-                  },
-                  child: const Text('退出登录'),
-                ),
-              ],
-            ),
-          ] else ...[
-            FTextField(
-              control: FTextFieldControl.managed(controller: _urlController),
-              hint: '服务端 URL',
-            ),
-            const Gap(8),
-            FTextField(
-              control: FTextFieldControl.managed(controller: _userController),
-              hint: '用户名',
-            ),
-            const Gap(8),
-            FTextField.password(
-              control: FTextFieldControl.managed(controller: _pwdController),
-              hint: '密码',
-            ),
-            const Gap(12),
-            FButton(
-              mainAxisSize: MainAxisSize.min,
-              onPress: _busy ? null : _login,
-              child: Text(_busy ? '登录中…' : '登录并同步'),
-            ),
-          ],
-          if (_error != null) ...[
-            const Gap(8),
-            Text(_error!,
-                style: const TextStyle(fontSize: 11, color: Color(0xFFEF4444))),
-          ],
+            ] else ...[
+              FTextField(
+                control: FTextFieldControl.managed(controller: _urlController),
+                hint: '服务端 URL',
+              ),
+              const Gap(8),
+              FTextField(
+                control: FTextFieldControl.managed(controller: _codeController),
+                hint: '一次性接入码',
+              ),
+              const Gap(8),
+              FTextField(
+                control:
+                    FTextFieldControl.managed(controller: _deviceController),
+                hint: '设备名称',
+              ),
+              const Gap(12),
+              FButton(
+                mainAxisSize: MainAxisSize.min,
+                onPress: _busy ? null : _login,
+                child: Text(_busy ? '配对中…' : '配对并同步'),
+              ),
+            ],
+            if (_error != null) ...[
+              const Gap(8),
+              Text(_error!,
+                  style:
+                      const TextStyle(fontSize: 11, color: Color(0xFFEF4444))),
+            ],
           ],
         ),
       ),
