@@ -74,6 +74,33 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task Navigation_ShowsOnlyOneWorkspacePage()
+    {
+        var engine = new InMemoryEngineClient();
+        await engine.StartAsync();
+        await using var vm = new MainWindowViewModel(engine);
+        await vm.InitializeAsync();
+
+        await vm.OpenMonthCommand.ExecuteAsync(null);
+        Assert.True(vm.IsMonthOpen);
+        Assert.False(vm.IsSettingsOpen);
+        Assert.False(vm.IsTransferOpen);
+
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+        Assert.False(vm.IsMonthOpen);
+        Assert.True(vm.IsSettingsOpen);
+        Assert.False(vm.IsTransferOpen);
+
+        await vm.OpenTransferCommand.ExecuteAsync(null);
+        Assert.False(vm.IsMonthOpen);
+        Assert.False(vm.IsSettingsOpen);
+        Assert.True(vm.IsTransferOpen);
+
+        vm.ShowTasksCommand.Execute(null);
+        Assert.True(vm.IsTasksPage);
+    }
+
+    [Fact]
     public async Task ImportJson_PreservesCompletionAndSortOrder()
     {
         var path = Path.GetTempFileName();

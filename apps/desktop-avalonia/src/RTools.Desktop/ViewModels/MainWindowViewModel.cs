@@ -61,8 +61,28 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     public int ActiveCount => ActiveTasks.Count;
     public int VisibleCount => ActiveTasks.Count + CompletedTasks.Count;
     public bool IsEmpty => !_loading && VisibleCount == 0;
+    public bool IsTasksPage => !IsSettingsOpen && !IsMonthOpen && !IsTransferOpen;
+    public bool IsHighPrioritySelected => NewTaskPriority == TaskPriority.High;
+    public bool IsMediumPrioritySelected => NewTaskPriority == TaskPriority.Medium;
+    public bool IsLowPrioritySelected => NewTaskPriority == TaskPriority.Low;
 
     public string Title => $"rtools ({ActiveCount}/{VisibleCount})";
+
+    partial void OnIsSettingsOpenChanged(bool value)
+        => OnPropertyChanged(nameof(IsTasksPage));
+
+    partial void OnIsMonthOpenChanged(bool value)
+        => OnPropertyChanged(nameof(IsTasksPage));
+
+    partial void OnIsTransferOpenChanged(bool value)
+        => OnPropertyChanged(nameof(IsTasksPage));
+
+    partial void OnNewTaskPriorityChanged(TaskPriority value)
+    {
+        OnPropertyChanged(nameof(IsHighPrioritySelected));
+        OnPropertyChanged(nameof(IsMediumPrioritySelected));
+        OnPropertyChanged(nameof(IsLowPrioritySelected));
+    }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
@@ -201,6 +221,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     [RelayCommand]
     private async Task OpenSettings()
     {
+        IsMonthOpen = false;
+        IsTransferOpen = false;
         await Settings.LoadAsync();
         IsSettingsOpen = true;
     }
@@ -211,6 +233,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     [RelayCommand]
     private async Task OpenMonth()
     {
+        IsSettingsOpen = false;
+        IsTransferOpen = false;
         await LoadMonthAsync();
         IsMonthOpen = true;
     }
@@ -221,12 +245,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     [RelayCommand]
     private async Task OpenTransfer()
     {
+        IsSettingsOpen = false;
+        IsMonthOpen = false;
         await Transfer.LoadAsync();
         IsTransferOpen = true;
     }
 
     [RelayCommand]
     private void CloseTransfer() => IsTransferOpen = false;
+
+    [RelayCommand]
+    private void ShowTasks()
+    {
+        IsSettingsOpen = false;
+        IsMonthOpen = false;
+        IsTransferOpen = false;
+    }
 
     [RelayCommand]
     private void EditTask(TaskItem? task)

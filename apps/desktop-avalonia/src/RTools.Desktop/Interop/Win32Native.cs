@@ -14,6 +14,8 @@ internal static class Win32Native
     public const uint SwpNoActivate = 0x0010;
     public const uint SwpFrameChanged = 0x0020;
     public static readonly IntPtr HwndBottom = new(1);
+    private const int DwmwaSystemBackdropType = 38;
+    private const int DwmSystemBackdropMicaAlt = 4;
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern IntPtr FindWindow(string? className, string? windowName);
@@ -41,5 +43,26 @@ internal static class Win32Native
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint RegisterWindowMessage(string message);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(
+        IntPtr hwnd,
+        int attribute,
+        ref int value,
+        int valueSize);
+
+    public static bool TryEnableMicaAlt(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+        {
+            return false;
+        }
+        var backdrop = DwmSystemBackdropMicaAlt;
+        return DwmSetWindowAttribute(
+            hwnd,
+            DwmwaSystemBackdropType,
+            ref backdrop,
+            sizeof(int)) == 0;
+    }
 }
 

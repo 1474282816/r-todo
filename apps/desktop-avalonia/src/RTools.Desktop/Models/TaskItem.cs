@@ -78,9 +78,28 @@ public sealed partial class TaskItem : ObservableObject
         _ => "低"
     };
 
+    public bool IsHighPriority => Priority == TaskPriority.High;
+
+    public bool IsMediumPriority => Priority == TaskPriority.Medium;
+
+    public bool IsLowPriority => Priority == TaskPriority.Low;
+
     public string ReminderLabel => RemindAt is null
         ? ""
         : RemindAt.Value.LocalDateTime.ToString("MM-dd HH:mm");
+
+    partial void OnPriorityChanged(TaskPriority value)
+    {
+        OnPropertyChanged(nameof(PriorityLabel));
+        OnPropertyChanged(nameof(IsHighPriority));
+        OnPropertyChanged(nameof(IsMediumPriority));
+        OnPropertyChanged(nameof(IsLowPriority));
+    }
+
+    partial void OnRemindAtChanged(DateTimeOffset? value)
+    {
+        OnPropertyChanged(nameof(ReminderLabel));
+    }
 
     public TaskItem Clone()
     {

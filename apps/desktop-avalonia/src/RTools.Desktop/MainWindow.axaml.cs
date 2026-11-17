@@ -72,15 +72,16 @@ public partial class MainWindow : Window
             "mica_alt" => [WindowTransparencyLevel.Mica, WindowTransparencyLevel.AcrylicBlur],
             _ => [WindowTransparencyLevel.AcrylicBlur, WindowTransparencyLevel.Blur]
         };
-        var opacityText = await engine.GetSettingAsync("opacity");
-        if (double.TryParse(
-                opacityText,
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out var opacity))
+        if (material == "mica_alt" && OperatingSystem.IsWindows())
         {
-            Opacity = Math.Clamp(opacity, 0.2, 1.0);
+            var hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+            if (hwnd != IntPtr.Zero)
+            {
+                Win32Native.TryEnableMicaAlt(hwnd);
+            }
         }
+        // 材质透明由 DWM 和半透明表面共同完成，避免整窗降透明度导致文字发灰。
+        Opacity = 1;
     }
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)

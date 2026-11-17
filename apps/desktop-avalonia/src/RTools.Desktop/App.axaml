@@ -2,17 +2,212 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="RTools.Desktop.App"
              RequestedThemeVariant="Default">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="RtSidebarSurfaceBrush" Color="#B8EEEEEE" />
+                    <SolidColorBrush x:Key="RtSurfaceBrush" Color="#DFFFFFFF" />
+                    <SolidColorBrush x:Key="RtSurfaceStrongBrush" Color="#F7FFFFFF" />
+                    <SolidColorBrush x:Key="RtSurfaceSubtleBrush" Color="#80FFFFFF" />
+                    <SolidColorBrush x:Key="RtStrokeBrush" Color="#1A000000" />
+                    <SolidColorBrush x:Key="RtTextPrimaryBrush" Color="#E4000000" />
+                    <SolidColorBrush x:Key="RtTextSecondaryBrush" Color="#99000000" />
+                    <SolidColorBrush x:Key="RtTextTertiaryBrush" Color="#66000000" />
+                    <SolidColorBrush x:Key="RtAccentBrush" Color="#FF0067C0" />
+                    <SolidColorBrush x:Key="RtAccentSubtleBrush" Color="#180067C0" />
+                    <SolidColorBrush x:Key="RtDangerBrush" Color="#FFC42B1C" />
+                    <SolidColorBrush x:Key="RtDangerSubtleBrush" Color="#18C42B1C" />
+                    <SolidColorBrush x:Key="RtSuccessBrush" Color="#FF0F7B0F" />
+                    <SolidColorBrush x:Key="RtWarningBrush" Color="#FF9D5D00" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="RtSidebarSurfaceBrush" Color="#B31A1A1A" />
+                    <SolidColorBrush x:Key="RtSurfaceBrush" Color="#CC202020" />
+                    <SolidColorBrush x:Key="RtSurfaceStrongBrush" Color="#E62B2B2B" />
+                    <SolidColorBrush x:Key="RtSurfaceSubtleBrush" Color="#80FFFFFF" />
+                    <SolidColorBrush x:Key="RtStrokeBrush" Color="#33FFFFFF" />
+                    <SolidColorBrush x:Key="RtTextPrimaryBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="RtTextSecondaryBrush" Color="#B3FFFFFF" />
+                    <SolidColorBrush x:Key="RtTextTertiaryBrush" Color="#73FFFFFF" />
+                    <SolidColorBrush x:Key="RtAccentBrush" Color="#FF60CDFF" />
+                    <SolidColorBrush x:Key="RtAccentSubtleBrush" Color="#2660CDFF" />
+                    <SolidColorBrush x:Key="RtDangerBrush" Color="#FFFF99A4" />
+                    <SolidColorBrush x:Key="RtDangerSubtleBrush" Color="#26FF99A4" />
+                    <SolidColorBrush x:Key="RtSuccessBrush" Color="#FF6CCB5F" />
+                    <SolidColorBrush x:Key="RtWarningBrush" Color="#FFF5B84B" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="RtSidebarSurfaceBrush" Color="#B31A1A1A" />
+                    <SolidColorBrush x:Key="RtSurfaceBrush" Color="#CC202020" />
+                    <SolidColorBrush x:Key="RtSurfaceStrongBrush" Color="#E62B2B2B" />
+                    <SolidColorBrush x:Key="RtSurfaceSubtleBrush" Color="#80FFFFFF" />
+                    <SolidColorBrush x:Key="RtStrokeBrush" Color="#33FFFFFF" />
+                    <SolidColorBrush x:Key="RtTextPrimaryBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="RtTextSecondaryBrush" Color="#B3FFFFFF" />
+                    <SolidColorBrush x:Key="RtTextTertiaryBrush" Color="#73FFFFFF" />
+                    <SolidColorBrush x:Key="RtAccentBrush" Color="#FF60CDFF" />
+                    <SolidColorBrush x:Key="RtAccentSubtleBrush" Color="#2660CDFF" />
+                    <SolidColorBrush x:Key="RtDangerBrush" Color="#FFFF99A4" />
+                    <SolidColorBrush x:Key="RtDangerSubtleBrush" Color="#26FF99A4" />
+                    <SolidColorBrush x:Key="RtSuccessBrush" Color="#FF6CCB5F" />
+                    <SolidColorBrush x:Key="RtWarningBrush" Color="#FFF5B84B" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
         <Style Selector="Window">
             <Setter Property="Background" Value="Transparent" />
         </Style>
         <Style Selector="TextBlock">
-            <Setter Property="FontFamily" Value="avares://Avalonia.Fonts.Inter/Assets#Inter, Microsoft YaHei UI" />
+            <Setter Property="FontFamily"
+                    Value="Segoe UI Variable Text, Microsoft YaHei UI" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtTextPrimaryBrush}" />
         </Style>
         <Style Selector="Button">
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="MinHeight" Value="34" />
+        </Style>
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="{DynamicResource RtAccentBrush}" />
+            <Setter Property="Foreground" Value="#FFFFFFFF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.primary:pointerover">
+            <Setter Property="Opacity" Value="0.9" />
+        </Style>
+        <Style Selector="Button.icon">
+            <Setter Property="MinWidth" Value="32" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtTextSecondaryBrush}" />
+        </Style>
+        <Style Selector="Button.icon:pointerover">
+            <Setter Property="Background"
+                    Value="{DynamicResource RtSurfaceSubtleBrush}" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtTextPrimaryBrush}" />
+        </Style>
+        <Style Selector="Button.nav">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtTextSecondaryBrush}" />
+            <Setter Property="Padding" Value="12,9" />
+            <Setter Property="Margin" Value="0,2" />
+        </Style>
+        <Style Selector="Button.nav:pointerover">
+            <Setter Property="Background"
+                    Value="{DynamicResource RtSurfaceSubtleBrush}" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtTextPrimaryBrush}" />
+        </Style>
+        <Style Selector="Button.priority">
+            <Setter Property="MinWidth" Value="40" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Background"
+                    Value="{DynamicResource RtSurfaceSubtleBrush}" />
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource RtStrokeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.priority.selected">
+            <Setter Property="Background"
+                    Value="{DynamicResource RtAccentSubtleBrush}" />
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource RtAccentBrush}" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtAccentBrush}" />
+        </Style>
+        <Style Selector="Button.link">
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtAccentBrush}" />
+        </Style>
+        <Style Selector="TextBlock.h1">
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="TextBlock.h2">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="TextBlock.caption">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtTextSecondaryBrush}" />
+        </Style>
+        <Style Selector="TextBlock.muted">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtTextTertiaryBrush}" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Background"
+                    Value="{DynamicResource RtSurfaceBrush}" />
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource RtStrokeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Border.cardSubtle">
             <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="Background"
+                    Value="{DynamicResource RtSurfaceSubtleBrush}" />
+        </Style>
+        <Style Selector="Border.taskRow">
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Background" Value="#10000000" />
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource RtStrokeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Margin" Value="0,3" />
+        </Style>
+        <Style Selector="Border.taskRow:pointerover">
+            <Setter Property="Background"
+                    Value="{DynamicResource RtSurfaceStrongBrush}" />
+        </Style>
+        <Style Selector="CheckBox.taskCheck">
+            <Setter Property="MinWidth" Value="26" />
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Margin" Value="0,2,10,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBox">
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Background"
+                    Value="{DynamicResource RtSurfaceStrongBrush}" />
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource RtStrokeBrush}" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="Separator">
+            <Setter Property="Margin" Value="0,6" />
         </Style>
     </Application.Styles>
 </Application>
