@@ -169,68 +169,77 @@
                                 <TextBlock Classes="caption"
                                            FontWeight="SemiBold"
                                            Text="{Binding ActiveCount, StringFormat='进行中 · {0}'}" />
-                                <TextBlock Grid.Column="1"
-                                           Classes="muted"
-                                           Text="点击圆圈完成任务" />
                             </Grid>
                             <ItemsControl ItemsSource="{Binding ActiveTasks}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="models:TaskItem">
                                         <Border Classes="taskRow">
-                                            <Grid ColumnDefinitions="Auto,*,Auto">
-                                                <CheckBox Grid.Column="0"
-                                                          Classes="taskCheck"
-                                                          IsChecked="{Binding IsCompleted, Mode=OneWay}"
-                                                          Command="{Binding $parent[Window].DataContext.ToggleCompleteCommand}"
-                                                          CommandParameter="{Binding}" />
-                                                <StackPanel Grid.Column="1"
+                                            <Grid ColumnDefinitions="Auto,7,*,Auto">
+                                                <Button Grid.Column="0"
+                                                        Classes="taskCheckIcon"
+                                                        Command="{Binding $parent[Window].DataContext.ToggleCompleteCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip.Tip="完成任务">
+                                                    <Grid Width="22" Height="22">
+                                                        <Border Width="22"
+                                                                Height="22"
+                                                                CornerRadius="11"
+                                                                Background="Transparent"
+                                                                BorderBrush="{DynamicResource RtCheckboxBrush}"
+                                                                BorderThickness="1" />
+                                                        <PathIcon Width="13"
+                                                                  Height="13"
+                                                                  IsVisible="{Binding IsCompleted}"
+                                                                  Foreground="{DynamicResource RtSuccessBrush}"
+                                                                  Data="M9,16.17L4.83,12L3.41,13.41L9,19L21,7L19.59,5.59L9,16.17Z" />
+                                                    </Grid>
+                                                </Button>
+                                                <Border Grid.Column="1"
+                                                        Width="7"
+                                                        Height="7"
+                                                        CornerRadius="4"
+                                                        VerticalAlignment="Center"
+                                                        Background="{DynamicResource RtDangerBrush}"
+                                                        IsVisible="{Binding IsHighPriority}"
+                                                        ToolTip.Tip="高优先级" />
+                                                <Border Grid.Column="1"
+                                                        Width="7"
+                                                        Height="7"
+                                                        CornerRadius="4"
+                                                        VerticalAlignment="Center"
+                                                        Background="{DynamicResource RtWarningBrush}"
+                                                        IsVisible="{Binding IsMediumPriority}"
+                                                        ToolTip.Tip="中优先级" />
+                                                <Border Grid.Column="1"
+                                                        Width="7"
+                                                        Height="7"
+                                                        CornerRadius="4"
+                                                        VerticalAlignment="Center"
+                                                        Background="{DynamicResource RtTextTertiaryBrush}"
+                                                        IsVisible="{Binding IsLowPriority}"
+                                                        ToolTip.Tip="低优先级" />
+                                                <StackPanel Grid.Column="2"
+                                                            Margin="9,0,0,0"
                                                             VerticalAlignment="Center"
                                                             Spacing="5">
                                                     <TextBlock FontSize="14"
                                                                Text="{Binding Title}"
                                                                TextWrapping="Wrap" />
                                                     <StackPanel Orientation="Horizontal" Spacing="7">
-                                                        <Border Padding="7,2"
-                                                                CornerRadius="4"
-                                                                Background="{DynamicResource RtDangerSubtleBrush}"
-                                                                IsVisible="{Binding IsHighPriority}">
-                                                            <TextBlock FontSize="10"
-                                                                       Foreground="{DynamicResource RtDangerBrush}"
-                                                                       Text="高优先级" />
-                                                        </Border>
-                                                        <Border Padding="7,2"
-                                                                CornerRadius="4"
-                                                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                                                IsVisible="{Binding IsMediumPriority}">
-                                                            <TextBlock FontSize="10"
-                                                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
-                                                                       Text="中优先级" />
-                                                        </Border>
-                                                        <Border Padding="7,2"
-                                                                CornerRadius="4"
-                                                                Background="{DynamicResource RtSurfaceSubtleBrush}"
-                                                                IsVisible="{Binding IsLowPriority}">
+                                                        <StackPanel Orientation="Horizontal"
+                                                                    Spacing="4"
+                                                                    IsVisible="{Binding ReminderLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                            <PathIcon Width="10"
+                                                                      Height="10"
+                                                                      Foreground="{DynamicResource RtWarningBrush}"
+                                                                      Data="M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,7H13V13H11V7M11,15H13V17H11V15Z" />
                                                             <TextBlock FontSize="10"
                                                                        Foreground="{DynamicResource RtTextSecondaryBrush}"
-                                                                       Text="低优先级" />
-                                                        </Border>
-                                                        <Border Padding="7,2"
-                                                                CornerRadius="4"
-                                                                Background="{DynamicResource RtSurfaceSubtleBrush}"
-                                                                IsVisible="{Binding ReminderLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                                                <PathIcon Width="10"
-                                                                          Height="10"
-                                                                          Foreground="{DynamicResource RtWarningBrush}"
-                                                                          Data="M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,7H13V13H11V7M11,15H13V17H11V15Z" />
-                                                                <TextBlock FontSize="10"
-                                                                           Foreground="{DynamicResource RtTextSecondaryBrush}"
-                                                                           Text="{Binding ReminderLabel}" />
-                                                            </StackPanel>
-                                                        </Border>
+                                                                       Text="{Binding ReminderLabel}" />
+                                                        </StackPanel>
                                                     </StackPanel>
                                                 </StackPanel>
-                                                <StackPanel Grid.Column="2"
+                                                <StackPanel Grid.Column="3"
                                                             Orientation="Horizontal"
                                                             VerticalAlignment="Center"
                                                             Spacing="1">
@@ -280,11 +289,24 @@
                                     <DataTemplate x:DataType="models:TaskItem">
                                         <Border Classes="taskRow" Opacity="0.68">
                                             <Grid ColumnDefinitions="Auto,*,Auto">
-                                                <CheckBox Grid.Column="0"
-                                                          Classes="taskCheck"
-                                                          IsChecked="True"
-                                                          Command="{Binding $parent[Window].DataContext.ToggleCompleteCommand}"
-                                                          CommandParameter="{Binding}" />
+                                                <Button Grid.Column="0"
+                                                        Classes="taskCheckIcon"
+                                                        Command="{Binding $parent[Window].DataContext.ToggleCompleteCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip.Tip="恢复任务">
+                                                    <Grid Width="22" Height="22">
+                                                        <Border Width="22"
+                                                                Height="22"
+                                                                CornerRadius="11"
+                                                                Background="Transparent"
+                                                                BorderBrush="{DynamicResource RtCheckboxBrush}"
+                                                                BorderThickness="1" />
+                                                        <PathIcon Width="13"
+                                                                  Height="13"
+                                                                  Foreground="{DynamicResource RtSuccessBrush}"
+                                                                  Data="M9,16.17L4.83,12L3.41,13.41L9,19L21,7L19.59,5.59L9,16.17Z" />
+                                                    </Grid>
+                                                </Button>
                                                 <TextBlock Grid.Column="1"
                                                            VerticalAlignment="Center"
                                                            FontSize="13"

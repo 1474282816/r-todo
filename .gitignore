@@ -75,6 +75,7 @@ apps/desktop/src-tauri/.cargo/
 # ────── 本地临时/探测产物（不入库） ──────
 /tmp/
 /.workbuddy/
+/.impeccable/review/
 /*.obj
 /r-todo_*.exe
 /r-todo_*.exe.sig
