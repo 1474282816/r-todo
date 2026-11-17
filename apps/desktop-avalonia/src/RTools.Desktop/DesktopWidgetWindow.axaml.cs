@@ -18,6 +18,7 @@ public sealed partial class DesktopWidgetWindow : Window
     private Point _dragStartPoint;
     private bool _draggingTask;
     private int _dragSourceIndex;
+    private bool _dragEnabled;
 
     public DesktopWidgetWindow()
     {
@@ -172,21 +173,27 @@ public sealed partial class DesktopWidgetWindow : Window
         }
     }
 
-    private void OnTaskRowPointerPressed(object? sender, PointerPressedEventArgs e)
+    private void OnCloseEditorClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.CloseEditorCommand.Execute(null);
+        }
+    }
+
+    private void OnTaskTitlePointerPressed(object? sender, PointerPressedEventArgs e)
     {
         if (DataContext is not MainWindowViewModel viewModel ||
             sender is not Border border ||
-            border.DataContext is not TaskItem task ||
-            e.Source is Control source &&
-            source.FindAncestorOfType<Button>() is not null)
+            border.DataContext is not TaskItem task)
         {
             return;
         }
         _dragTask = task;
         _dragSourceIndex = viewModel.ActiveTasks.IndexOf(task);
+        _dragEnabled = _dragSourceIndex >= 0;
         _dragStartPoint = e.GetPosition(WidgetTaskList);
         _draggingTask = false;
-        e.Pointer.Capture(border);
     }
 
     private void OnTaskRowPointerEntered(object? sender, PointerEventArgs e)
@@ -212,9 +219,9 @@ public sealed partial class DesktopWidgetWindow : Window
         }
     }
 
-    private void OnTaskRowPointerMoved(object? sender, PointerEventArgs e)
+    private void OnTaskTitlePointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_dragTask is null)
+        if (_dragTask is null || !_dragEnabled)
         {
             return;
         }
@@ -229,40 +236,56 @@ public sealed partial class DesktopWidgetWindow : Window
         e.Pointer.Capture(sender as IInputElement);
     }
 
-    private async void OnTaskRowPointerReleased(object? sender, PointerReleasedEventArgs e)
+    private async void OnTaskTitlePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         var task = _dragTask;
         var moved = _draggingTask;
         _dragTask = null;
         _draggingTask = false;
+        _dragEnabled = false;
         e.Pointer.Capture(null);
         if (task is null)
         {
             return;
         }
         task.IsDragging = false;
-        if (!moved || DataContext is not MainWindowViewModel viewModel)
+        if (DataContext is not MainWindowViewModel viewModel)
         {
             return;
         }
+        if (!moved)
+        {
+            viewModel.EditTaskCommand.Execute(task);
+            return;
+        }
         var y = e.GetPosition(WidgetTaskList).Y;
-        var rowHeight = 36.0;
-        var targetIndex = Math.Clamp(
-            (int)Math.Round(y / rowHeight),
-            0,
-            viewModel.ActiveTasks.Count - 1);
+        var rows = WidgetTaskList
+            .GetVisualDescendants()
+            .OfType<Border>()
+            .Where(border =>
+                border.Classes.Contains("widgetTaskRow") &&
+                border.DataContext is TaskItem)
+            .Select(border => new
+            {
+                Task = (TaskItem)border.DataContext!,
+                Top = border.TranslatePoint(default, WidgetTaskList)?.Y
+                    ?? double.PositiveInfinity,
+                border.Bounds.Height
+            })
+            .Where(row => viewModel.ActiveTasks.Contains(row.Task))
+            .OrderBy(row => row.Top)
+            .ToList();
+        var targetIndex = rows.Count(row =>
+            !ReferenceEquals(row.Task, task) &&
+            y > row.Top + row.Height / 2);
         if (targetIndex == _dragSourceIndex)
         {
             return;
         }
-        // 目标索引是插入位置；向下拖动时移除源行后索引要回退一位。
-        var finalIndex = targetIndex > _dragSourceIndex
-            ? targetIndex - 1
-            : targetIndex;
-        await viewModel.ReorderTaskToIndexAsync(task, finalIndex);
+        await viewModel.ReorderTaskToIndexAsync(task, targetIndex);
     }
 
-    private void OnTaskRowPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    private void OnTaskTitlePointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
         if (_dragTask is not null)
         {
@@ -270,18 +293,18 @@ public sealed partial class DesktopWidgetWindow : Window
         }
         _dragTask = null;
         _draggingTask = false;
+        _dragEnabled = false;
     }
 
-    private void OnTaskTitlePointerPressed(object? sender, PointerPressedEventArgs e)
+    private void OnTaskRowInteractivePointerPressed(
+        object? sender,
+        PointerPressedEventArgs e)
     {
-        if (sender is not Border border ||
-            border.DataContext is not TaskItem task ||
-            DataContext is not MainWindowViewModel viewModel ||
-            _draggingTask)
-        {
-            return;
-        }
-        viewModel.EditTaskCommand.Execute(task);
-        e.Handled = true;
+        // 按钮拥有独立的点击语义，不让父级任务行启动拖拽。
+        _dragTask = null;
+        _draggingTask = false;
+        _dragEnabled = false;
+        e.Pointer.Capture(null);
     }
+
 }

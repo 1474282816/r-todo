@@ -59,6 +59,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     [ObservableProperty]
     private string _syncSummary = "未连接同步";
 
+    private CancellationTokenSource? _deleteConfirmationCancellation;
+
     public int ActiveCount => ActiveTasks.Count;
     public int VisibleCount => ActiveTasks.Count + CompletedTasks.Count;
     public bool IsEmpty => !_loading && VisibleCount == 0;
@@ -223,6 +225,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         {
             return;
         }
+        _deleteConfirmationCancellation?.Cancel();
+        _deleteConfirmationCancellation?.Dispose();
         foreach (var item in ActiveTasks.Concat(CompletedTasks))
         {
             if (!ReferenceEquals(item, task))
@@ -231,14 +235,43 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
             }
         }
         task.IsDeleteConfirming = true;
+        var cancellation = new CancellationTokenSource();
+        _deleteConfirmationCancellation = cancellation;
+        _ = CancelDeleteAfterDelayAsync(task, cancellation);
     }
 
     [RelayCommand]
     private void CancelDeleteTask(TaskItem? task)
     {
+        _deleteConfirmationCancellation?.Cancel();
+        _deleteConfirmationCancellation?.Dispose();
+        _deleteConfirmationCancellation = null;
         if (task is not null)
         {
             task.IsDeleteConfirming = false;
+        }
+    }
+
+    private async Task CancelDeleteAfterDelayAsync(
+        TaskItem task,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(3), cancellation.Token);
+            task.IsDeleteConfirming = false;
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户确认、取消或切换到另一行时停止上一轮倒计时。
+        }
+        finally
+        {
+            if (ReferenceEquals(_deleteConfirmationCancellation, cancellation))
+            {
+                _deleteConfirmationCancellation = null;
+            }
+            cancellation.Dispose();
         }
     }
 
@@ -627,6 +660,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
 
     public async ValueTask DisposeAsync()
     {
+        _deleteConfirmationCancellation?.Cancel();
+        _deleteConfirmationCancellation?.Dispose();
+        _deleteConfirmationCancellation = null;
         _engine.TasksChanged -= OnTasksChanged;
         _engine.ReminderDue -= OnReminderDue;
         await _engine.DisposeAsync();

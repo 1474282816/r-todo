@@ -141,6 +141,26 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task DeleteConfirmation_CancelsAutomaticallyAfterThreeSeconds()
+    {
+        var engine = new InMemoryEngineClient();
+        await engine.StartAsync();
+        await using var vm = new MainWindowViewModel(engine);
+        await vm.InitializeAsync();
+        vm.NewTaskTitle = "稍后自动取消";
+        await vm.AddTaskCommand.ExecuteAsync(null);
+        var task = vm.ActiveTasks.Single();
+
+        vm.RequestDeleteTaskCommand.Execute(task);
+        Assert.True(task.IsDeleteConfirming);
+
+        await Task.Delay(TimeSpan.FromSeconds(3.3));
+
+        Assert.False(task.IsDeleteConfirming);
+        Assert.Single(vm.ActiveTasks);
+    }
+
+    [Fact]
     public async Task ImportJson_PreservesCompletionAndSortOrder()
     {
         var path = Path.GetTempFileName();

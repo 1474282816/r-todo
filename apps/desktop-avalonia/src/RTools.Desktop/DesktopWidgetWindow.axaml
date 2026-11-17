@@ -23,9 +23,9 @@
 
     <Window.Styles>
         <Style Selector="Button.widgetTaskCheck">
-            <Setter Property="Width" Value="28" />
+            <Setter Property="Width" Value="26" />
             <Setter Property="Height" Value="30" />
-            <Setter Property="MinWidth" Value="28" />
+            <Setter Property="MinWidth" Value="26" />
             <Setter Property="MinHeight" Value="30" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Background" Value="Transparent" />
@@ -35,9 +35,9 @@
             <Setter Property="Template">
                 <ControlTemplate>
                     <Border x:Name="WidgetTaskRing"
-                            Width="18"
-                            Height="18"
-                            CornerRadius="9"
+                            Width="20"
+                            Height="20"
+                            CornerRadius="10"
                             BorderThickness="2"
                             BorderBrush="{DynamicResource RtCheckboxBrush}"
                             Background="{TemplateBinding Background}">
@@ -49,9 +49,9 @@
             </Setter>
         </Style>
         <Style Selector="Button.widgetRowAction">
-            <Setter Property="Width" Value="22" />
+            <Setter Property="Width" Value="24" />
             <Setter Property="Height" Value="26" />
-            <Setter Property="MinWidth" Value="22" />
+            <Setter Property="MinWidth" Value="24" />
             <Setter Property="MinHeight" Value="26" />
             <Setter Property="Padding" Value="0" />
             <Setter Property="Background" Value="Transparent" />
@@ -65,12 +65,6 @@
                                      Duration="0:0:0.35" />
                 </Transitions>
             </Setter>
-        </Style>
-        <Style Selector="Border.widgetTaskRow">
-            <Setter Property="Opacity" Value="1" />
-        </Style>
-        <Style Selector="Border.widgetTaskRow.dragging">
-            <Setter Property="Opacity" Value="0.55" />
         </Style>
         <Style Selector="Border.widgetTaskRow:pointerover Button.widgetRowAction">
             <Setter Property="Opacity" Value="1" />
@@ -96,24 +90,27 @@
                     Value="{DynamicResource RtTextPrimaryBrush}" />
         </Style>
         <Style Selector="Border.widgetTaskRow">
-            <Setter Property="Padding" Value="0,5" />
-            <Setter Property="Margin" Value="0" />
-            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="CornerRadius" Value="7" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="Cursor" Value="Arrow" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background"
+                                     Duration="0:0:0.16" />
+                </Transitions>
+            </Setter>
         </Style>
         <Style Selector="Border.widgetTaskRow.dragging">
             <Setter Property="Background" Value="#18FFFFFF" />
             <Setter Property="Opacity" Value="0.65" />
+            <Setter Property="Cursor" Value="SizeNorthSouth" />
         </Style>
         <Style Selector="Border.widgetTaskRow:pointerover">
             <Setter Property="Background" Value="#0AFFFFFF" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background"
-                                     Duration="0:0:0.15" />
-                </Transitions>
-            </Setter>
         </Style>
         <Style Selector="TextBox.widgetInput">
             <Setter Property="MinHeight" Value="32" />
@@ -129,14 +126,20 @@
                     Value="{DynamicResource RtTextPrimaryBrush}" />
             <Setter Property="Background" Value="#14FFFFFF" />
         </Style>
+        <Style Selector="Button.widgetTaskCheck.completed /template/ Border#WidgetTaskRing">
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource RtSuccessBrush}" />
+            <Setter Property="Background"
+                    Value="{DynamicResource RtSuccessBrush}" />
+        </Style>
+        <Style Selector="Button.widgetTaskCheck.completed:pointerover /template/ Border#WidgetTaskRing">
+            <Setter Property="BorderBrush"
+                    Value="{DynamicResource RtSuccessBrush}" />
+            <Setter Property="Background"
+                    Value="{DynamicResource RtSuccessBrush}" />
+        </Style>
         <Style Selector="Button.widgetTaskCheck:pointerover">
             <Setter Property="Cursor" Value="Hand" />
-        </Style>
-        <Style Selector="Border.widgetTaskRow">
-            <Setter Property="Cursor" Value="Arrow" />
-        </Style>
-        <Style Selector="Border.widgetTaskRow.dragging">
-            <Setter Property="Cursor" Value="SizeNorthSouth" />
         </Style>
         <Style Selector="Button.widgetIcon">
             <Setter Property="Width" Value="30" />
@@ -187,14 +190,14 @@
                                 ToolTip.Tip="设置">
                             <PathIcon Width="13"
                                       Height="13"
-                                      Data="M19.14,12.94C19.18,12.64 19.2,12.33 19.2,12C19.2,11.68 19.18,11.36 19.13,11.06L21.16,9.48C21.34,9.34 21.39,9.07 21.28,8.86L19.36,5.54C19.25,5.32 18.99,5.24 18.76,5.32L14.89,6.88C14.35,6.47 13.74,6.14 13.08,5.91L12.5,2.8C12.47,2.56 12.26,2.38 12,2.38H8.16C7.9,2.38 7.69,2.56 7.66,2.8L7.08,5.91C6.42,6.14 5.81,6.47 5.27,6.88L1.4,5.32C1.17,5.24 0.91,5.32 0.8,5.54L-1.12,8.86C-1.23,9.08 -1.18,9.36 -1,9.48L1.03,11.06C0.98,11.36 0.96,11.68 0.96,12C0.96,12.32 0.98,12.64 1.03,12.94L-1,14.52C-1.18,14.66 -1.23,14.93 -1.12,15.14L0.8,18.46C0.91,18.68 1.17,18.76 1.4,18.68L5.27,17.12C5.81,17.53 6.42,17.86 7.08,18.09L7.66,21.2C7.69,21.44 7.9,21.62 8.16,21.62H12C12.26,21.62 12.47,21.44 12.5,21.2L13.08,18.09C13.74,17.86 14.35,17.53 14.89,17.12L18.76,18.68C18.99,18.76 19.25,18.68 19.36,18.46L21.28,15.14C21.39,14.92 21.34,14.65 21.16,14.52L19.14,12.94M12,16C9.79,16 8,14.21 8,12S9.79,8 12,8S16,9.79 16,12S14.21,16 12,16Z" />
+                                      Data="M4,7H20V9H4V7M4,15H20V17H4V15M6,5H8V11H6V5M16,13H18V19H16V13Z" />
                         </Button>
                     </StackPanel>
                 </Grid>
 
                 <Border Grid.Row="1"
                         Margin="10,0,10,6"
-                        Height="44"
+                        Height="40"
                         Padding="9,0"
                         CornerRadius="8"
                         Background="{DynamicResource SubtleFillColorSecondaryBrush}"
@@ -311,60 +314,54 @@
                                     <Border Classes="widgetTaskRow"
                                             Classes.dragging="{Binding IsDragging}"
                                             PointerEntered="OnTaskRowPointerEntered"
-                                            PointerExited="OnTaskRowPointerExited"
-                                            PointerPressed="OnTaskRowPointerPressed"
-                                            PointerMoved="OnTaskRowPointerMoved"
-                                            PointerReleased="OnTaskRowPointerReleased"
-                                            PointerCaptureLost="OnTaskRowPointerCaptureLost">
-                                        <Grid ColumnDefinitions="3,28,*,Auto">
+                                            PointerExited="OnTaskRowPointerExited">
+                                        <Grid ColumnDefinitions="3,8,26,*,Auto">
                                             <Border Grid.Column="0"
                                                     Width="3"
-                                                    Margin="0,1"
                                                     CornerRadius="2"
                                                     Background="{DynamicResource RtDangerBrush}"
+                                                    Opacity="0.8"
                                                     IsVisible="{Binding IsHighPriority}" />
                                             <Border Grid.Column="0"
                                                     Width="3"
-                                                    Margin="0,1"
                                                     CornerRadius="2"
                                                     Background="{DynamicResource RtWarningBrush}"
+                                                    Opacity="0.8"
                                                     IsVisible="{Binding IsMediumPriority}" />
                                             <Border Grid.Column="0"
                                                     Width="3"
-                                                    Margin="0,1"
                                                     CornerRadius="2"
                                                     Background="{DynamicResource RtTextTertiaryBrush}"
-                                                    Opacity="0.45"
+                                                    Opacity="0.35"
                                                     IsVisible="{Binding IsLowPriority}" />
-                                            <Button Grid.Column="1"
+                                            <Button Grid.Column="2"
                                                     Classes="widgetTaskCheck"
+                                                    PointerPressed="OnTaskRowInteractivePointerPressed"
                                                     Command="{Binding $parent[Window].DataContext.ToggleCompleteCommand}"
                                                     CommandParameter="{Binding}"
                                                     ToolTip.Tip="完成任务">
-                                                <Grid Width="18" Height="18">
-                                                    <Border Width="18"
-                                                            Height="18"
-                                                            CornerRadius="9"
-                                                            BorderBrush="{DynamicResource RtCheckboxBrush}"
-                                                            BorderThickness="2" />
+                                                <Grid Width="20" Height="20">
                                                     <PathIcon Width="11"
                                                               Height="11"
                                                               IsVisible="{Binding IsCompleted}"
-                                                              Foreground="{DynamicResource RtSuccessBrush}"
+                                                              Foreground="White"
                                                               Data="M9,16.17L4.83,12L3.41,13.41L9,19L21,7L19.59,5.59L9,16.17Z" />
                                                 </Grid>
                                             </Button>
-                                            <Border Grid.Column="2"
-                                                    Margin="0,0,1,0"
+                                            <Border Grid.Column="3"
+                                                    Margin="7,0,2,0"
                                                     Background="Transparent"
-                                                    PointerPressed="OnTaskTitlePointerPressed">
-                                                <StackPanel Spacing="1"
+                                                    PointerPressed="OnTaskTitlePointerPressed"
+                                                    PointerMoved="OnTaskTitlePointerMoved"
+                                                    PointerReleased="OnTaskTitlePointerReleased"
+                                                    PointerCaptureLost="OnTaskTitlePointerCaptureLost">
+                                                <StackPanel Spacing="2"
                                                             VerticalAlignment="Center">
                                                     <TextBlock FontSize="13"
-                                                               LineHeight="17"
+                                                               LineHeight="18"
                                                                VerticalAlignment="Center"
-                                                       Text="{Binding Title}"
-                                                       FontWeight="Normal"
+                                                               Text="{Binding Title}"
+                                                               FontWeight="Normal"
                                                                TextTrimming="CharacterEllipsis" />
                                                     <StackPanel Orientation="Horizontal"
                                                                 Spacing="4"
@@ -379,15 +376,17 @@
                                                     </StackPanel>
                                                 </StackPanel>
                                             </Border>
-                                                <StackPanel Grid.Column="3"
-                                                        Orientation="Horizontal">
+                                            <StackPanel Grid.Column="4"
+                                                        VerticalAlignment="Center"
+                                                        Orientation="Horizontal"
+                                                        PointerPressed="OnTaskRowInteractivePointerPressed">
                                                 <Button Classes="widgetRowAction widgetDelete"
                                                         IsVisible="{Binding !IsDeleteConfirming}"
                                                         Command="{Binding $parent[Window].DataContext.RequestDeleteTaskCommand}"
                                                         CommandParameter="{Binding}"
                                                         ToolTip.Tip="删除">
-                                                    <PathIcon Width="11"
-                                                              Height="11"
+                                                    <PathIcon Width="13"
+                                                              Height="13"
                                                               Data="M6,19C6,20.1 6.9,21 8,21H16C17.1,21 18,20.1 18,19V7H6V19M8,9H16V19H8V9M15.5,4L14.5,3H9.5L8.5,4H5V6H19V4H15.5Z" />
                                                 </Button>
                                                 <StackPanel Orientation="Horizontal"
@@ -397,16 +396,16 @@
                                                             Command="{Binding $parent[Window].DataContext.DeleteTaskCommand}"
                                                             CommandParameter="{Binding}"
                                                             ToolTip.Tip="确认删除">
-                                                        <PathIcon Width="12"
-                                                                  Height="12"
+                                                        <PathIcon Width="13"
+                                                                  Height="13"
                                                                   Data="M9,16.17L4.83,12L3.41,13.41L9,19L21,7L19.59,5.59L9,16.17Z" />
                                                     </Button>
                                                     <Button Classes="widgetRowAction widgetCancelDelete"
                                                             Command="{Binding $parent[Window].DataContext.CancelDeleteTaskCommand}"
                                                             CommandParameter="{Binding}"
                                                             ToolTip.Tip="取消删除">
-                                                        <PathIcon Width="11"
-                                                                  Height="11"
+                                                        <PathIcon Width="13"
+                                                                  Height="13"
                                                                   Data="M18.3,5.71L16.89,4.29L12,9.17L7.11,4.29L5.7,5.71L10.59,10.6L5.7,15.49L7.11,16.9L12,12.01L16.89,16.9L18.3,15.49L13.41,10.6L18.3,5.71Z" />
                                                     </Button>
                                                 </StackPanel>
@@ -425,42 +424,40 @@
                         <ItemsControl ItemsSource="{Binding CompletedTasks}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="models:TaskItem">
-                                    <Border Classes="widgetTaskRow" Opacity="0.62">
-                                        <Grid ColumnDefinitions="3,28,*,Auto">
+                                    <Border Classes="widgetTaskRow"
+                                            Opacity="0.62">
+                                        <Grid ColumnDefinitions="3,8,26,*,Auto">
                                             <Border Width="3"
-                                                    Margin="0,1"
                                                     CornerRadius="2"
                                                     Background="{DynamicResource RtSuccessBrush}"
                                                     Opacity="0.65" />
-                                            <Button Grid.Column="1"
-                                                    Classes="widgetTaskCheck"
+                                            <Button Grid.Column="2"
+                                                    Classes="widgetTaskCheck completed"
+                                                    PointerPressed="OnTaskRowInteractivePointerPressed"
                                                     Command="{Binding $parent[Window].DataContext.ToggleCompleteCommand}"
                                                     CommandParameter="{Binding}"
                                                     ToolTip.Tip="恢复任务">
-                                                <Grid Width="18" Height="18">
-                                                    <Border Width="18"
-                                                            Height="18"
-                                                            CornerRadius="9"
-                                                            BorderBrush="{DynamicResource RtSuccessBrush}"
-                                                            BorderThickness="2" />
+                                                <Grid Width="20" Height="20">
                                                     <PathIcon Width="11"
                                                               Height="11"
-                                                              Foreground="{DynamicResource RtSuccessBrush}"
+                                                              Foreground="White"
                                                               Data="M9,16.17L4.83,12L3.41,13.41L9,19L21,7L19.59,5.59L9,16.17Z" />
                                                 </Grid>
                                             </Button>
-                                            <TextBlock Grid.Column="2"
+                                            <TextBlock Grid.Column="3"
+                                                       Margin="7,0,2,0"
                                                        VerticalAlignment="Center"
                                                        Text="{Binding Title}"
                                                        TextDecorations="Strikethrough"
                                                        TextTrimming="CharacterEllipsis" />
-                                            <Button Grid.Column="3"
+                                            <Button Grid.Column="4"
                                                     Classes="widgetRowAction widgetDelete"
+                                                    PointerPressed="OnTaskRowInteractivePointerPressed"
                                                     Command="{Binding $parent[Window].DataContext.DeleteTaskCommand}"
                                                     CommandParameter="{Binding}"
                                                     ToolTip.Tip="删除">
-                                                <PathIcon Width="11"
-                                                          Height="11"
+                                                <PathIcon Width="13"
+                                                          Height="13"
                                                           Data="M6,19C6,20.1 6.9,21 8,21H16C17.1,21 18,20.1 18,19V7H6V19M8,9H16V19H8V9M15.5,4L14.5,3H9.5L8.5,4H5V6H19V4H15.5Z" />
                                             </Button>
                                         </Grid>
@@ -499,6 +496,7 @@
                             <TextBlock Classes="h2" Text="编辑任务" />
                             <Button Grid.Column="1"
                                     Classes="icon"
+                                    Click="OnCloseEditorClicked"
                                     Command="{Binding $parent[Window].DataContext.CloseEditorCommand}"
                                     ToolTip.Tip="关闭">
                                 <PathIcon Width="14"
@@ -533,6 +531,7 @@
                                     HorizontalAlignment="Right"
                                     Spacing="8">
                             <Button Command="{Binding $parent[Window].DataContext.CloseEditorCommand}"
+                                    Click="OnCloseEditorClicked"
                                     Content="取消" />
                             <Button Classes="primary"
                                     Click="OnSaveEditedTask"
