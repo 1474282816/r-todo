@@ -70,6 +70,9 @@ public sealed partial class TaskItem : ObservableObject
     [ObservableProperty]
     private bool _isDragging;
 
+    [ObservableProperty]
+    private bool _isDeleteConfirming;
+
     public bool IsCompleted => CompletedAt is not null;
 
     public bool IsVisible => DeletedAt is null;

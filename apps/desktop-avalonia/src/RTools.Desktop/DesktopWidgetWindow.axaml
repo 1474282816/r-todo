@@ -56,7 +56,15 @@
             <Setter Property="Padding" Value="0" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Opacity" Value="1" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity"
+                                      Duration="0:0:0.18" />
+                    <BrushTransition Property="Foreground"
+                                     Duration="0:0:0.35" />
+                </Transitions>
+            </Setter>
         </Style>
         <Style Selector="Border.widgetTaskRow">
             <Setter Property="Opacity" Value="1" />
@@ -66,6 +74,26 @@
         </Style>
         <Style Selector="Border.widgetTaskRow:pointerover Button.widgetRowAction">
             <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Button.widgetDelete">
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtTextSecondaryBrush}" />
+        </Style>
+        <Style Selector="Button.widgetDelete:pointerover">
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtDangerBrush}" />
+        </Style>
+        <Style Selector="Button.widgetConfirmDelete">
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtDangerBrush}" />
+        </Style>
+        <Style Selector="Button.widgetCancelDelete">
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtTextSecondaryBrush}" />
+        </Style>
+        <Style Selector="Button.widgetCancelDelete:pointerover">
+            <Setter Property="Foreground"
+                    Value="{DynamicResource RtTextPrimaryBrush}" />
         </Style>
         <Style Selector="Border.widgetTaskRow">
             <Setter Property="Padding" Value="0,5" />
@@ -80,6 +108,12 @@
         </Style>
         <Style Selector="Border.widgetTaskRow:pointerover">
             <Setter Property="Background" Value="#0AFFFFFF" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background"
+                                     Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
         </Style>
         <Style Selector="TextBox.widgetInput">
             <Setter Property="MinHeight" Value="32" />
@@ -276,6 +310,8 @@
                                 <DataTemplate x:DataType="models:TaskItem">
                                     <Border Classes="widgetTaskRow"
                                             Classes.dragging="{Binding IsDragging}"
+                                            PointerEntered="OnTaskRowPointerEntered"
+                                            PointerExited="OnTaskRowPointerExited"
                                             PointerPressed="OnTaskRowPointerPressed"
                                             PointerMoved="OnTaskRowPointerMoved"
                                             PointerReleased="OnTaskRowPointerReleased"
@@ -345,14 +381,35 @@
                                             </Border>
                                                 <StackPanel Grid.Column="3"
                                                         Orientation="Horizontal">
-                                                <Button Classes="widgetRowAction"
-                                                        Command="{Binding $parent[Window].DataContext.DeleteTaskCommand}"
+                                                <Button Classes="widgetRowAction widgetDelete"
+                                                        IsVisible="{Binding !IsDeleteConfirming}"
+                                                        Command="{Binding $parent[Window].DataContext.RequestDeleteTaskCommand}"
                                                         CommandParameter="{Binding}"
                                                         ToolTip.Tip="删除">
                                                     <PathIcon Width="11"
                                                               Height="11"
                                                               Data="M6,19C6,20.1 6.9,21 8,21H16C17.1,21 18,20.1 18,19V7H6V19M8,9H16V19H8V9M15.5,4L14.5,3H9.5L8.5,4H5V6H19V4H15.5Z" />
                                                 </Button>
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="1"
+                                                            IsVisible="{Binding IsDeleteConfirming}">
+                                                    <Button Classes="widgetRowAction widgetConfirmDelete"
+                                                            Command="{Binding $parent[Window].DataContext.DeleteTaskCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            ToolTip.Tip="确认删除">
+                                                        <PathIcon Width="12"
+                                                                  Height="12"
+                                                                  Data="M9,16.17L4.83,12L3.41,13.41L9,19L21,7L19.59,5.59L9,16.17Z" />
+                                                    </Button>
+                                                    <Button Classes="widgetRowAction widgetCancelDelete"
+                                                            Command="{Binding $parent[Window].DataContext.CancelDeleteTaskCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            ToolTip.Tip="取消删除">
+                                                        <PathIcon Width="11"
+                                                                  Height="11"
+                                                                  Data="M18.3,5.71L16.89,4.29L12,9.17L7.11,4.29L5.7,5.71L10.59,10.6L5.7,15.49L7.11,16.9L12,12.01L16.89,16.9L18.3,15.49L13.41,10.6L18.3,5.71Z" />
+                                                    </Button>
+                                                </StackPanel>
                                             </StackPanel>
                                         </Grid>
                                     </Border>
@@ -369,7 +426,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="models:TaskItem">
                                     <Border Classes="widgetTaskRow" Opacity="0.62">
-                                        <Grid ColumnDefinitions="3,28,*">
+                                        <Grid ColumnDefinitions="3,28,*,Auto">
                                             <Border Width="3"
                                                     Margin="0,1"
                                                     CornerRadius="2"
@@ -397,6 +454,15 @@
                                                        Text="{Binding Title}"
                                                        TextDecorations="Strikethrough"
                                                        TextTrimming="CharacterEllipsis" />
+                                            <Button Grid.Column="3"
+                                                    Classes="widgetRowAction widgetDelete"
+                                                    Command="{Binding $parent[Window].DataContext.DeleteTaskCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="删除">
+                                                <PathIcon Width="11"
+                                                          Height="11"
+                                                          Data="M6,19C6,20.1 6.9,21 8,21H16C17.1,21 18,20.1 18,19V7H6V19M8,9H16V19H8V9M15.5,4L14.5,3H9.5L8.5,4H5V6H19V4H15.5Z" />
+                                            </Button>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>

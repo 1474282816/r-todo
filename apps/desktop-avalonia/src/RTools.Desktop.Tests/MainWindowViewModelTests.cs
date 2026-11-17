@@ -123,6 +123,24 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task DeleteConfirmation_AllowsConfirmAndCancel()
+    {
+        var engine = new InMemoryEngineClient();
+        await engine.StartAsync();
+        await using var vm = new MainWindowViewModel(engine);
+        await vm.InitializeAsync();
+        vm.NewTaskTitle = "待删除";
+        await vm.AddTaskCommand.ExecuteAsync(null);
+        var task = vm.ActiveTasks.Single();
+
+        vm.RequestDeleteTaskCommand.Execute(task);
+        Assert.True(task.IsDeleteConfirming);
+
+        vm.CancelDeleteTaskCommand.Execute(task);
+        Assert.False(task.IsDeleteConfirming);
+    }
+
+    [Fact]
     public async Task ImportJson_PreservesCompletionAndSortOrder()
     {
         var path = Path.GetTempFileName();

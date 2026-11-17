@@ -189,6 +189,29 @@ public sealed partial class DesktopWidgetWindow : Window
         e.Pointer.Capture(border);
     }
 
+    private void OnTaskRowPointerEntered(object? sender, PointerEventArgs e)
+    {
+        if (sender is Border { DataContext: TaskItem task } &&
+            DataContext is MainWindowViewModel viewModel)
+        {
+            foreach (var item in viewModel.ActiveTasks.Concat(viewModel.CompletedTasks))
+            {
+                if (!ReferenceEquals(item, task))
+                {
+                    item.IsDeleteConfirming = false;
+                }
+            }
+        }
+    }
+
+    private void OnTaskRowPointerExited(object? sender, PointerEventArgs e)
+    {
+        if (sender is Border { DataContext: TaskItem task })
+        {
+            task.IsDeleteConfirming = false;
+        }
+    }
+
     private void OnTaskRowPointerMoved(object? sender, PointerEventArgs e)
     {
         if (_dragTask is null)

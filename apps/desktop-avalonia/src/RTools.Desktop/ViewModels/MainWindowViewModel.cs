@@ -205,6 +205,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         try
         {
             ErrorMessage = null;
+            task.IsDeleteConfirming = false;
             await _engine.DeleteTaskAsync(task.Id);
             await ReloadAsync();
             RaiseCounts();
@@ -212,6 +213,32 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         catch (Exception ex)
         {
             ErrorMessage = ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private void RequestDeleteTask(TaskItem? task)
+    {
+        if (task is null)
+        {
+            return;
+        }
+        foreach (var item in ActiveTasks.Concat(CompletedTasks))
+        {
+            if (!ReferenceEquals(item, task))
+            {
+                item.IsDeleteConfirming = false;
+            }
+        }
+        task.IsDeleteConfirming = true;
+    }
+
+    [RelayCommand]
+    private void CancelDeleteTask(TaskItem? task)
+    {
+        if (task is not null)
+        {
+            task.IsDeleteConfirming = false;
         }
     }
 
