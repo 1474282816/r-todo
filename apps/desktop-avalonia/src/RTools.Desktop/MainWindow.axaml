@@ -3,6 +3,7 @@
         x:Class="RTools.Desktop.MainWindow"
         xmlns:vm="using:RTools.Desktop.ViewModels"
         xmlns:models="using:RTools.Desktop.Models"
+        xmlns:ui="using:FluentAvalonia.UI.Controls"
         x:DataType="vm:MainWindowViewModel"
         Width="880"
         Height="720"
@@ -17,124 +18,76 @@
     </Window.Icon>
 
     <Grid Background="Transparent">
-        <Grid ColumnDefinitions="220,*">
-            <Border Grid.Column="0"
-                    Background="{DynamicResource RtSidebarSurfaceBrush}"
-                    BorderBrush="{DynamicResource RtStrokeBrush}"
-                    BorderThickness="0,0,1,0">
-                <Grid Margin="14,18,14,14" RowDefinitions="Auto,*,Auto">
-                    <StackPanel Grid.Row="0" Margin="8,0,8,20" Spacing="10">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Border Width="36"
-                                    Height="36"
-                                    CornerRadius="8"
-                                    Background="{DynamicResource RtAccentBrush}">
-                                <PathIcon Width="18"
-                                          Height="18"
-                                          Foreground="#FFFFFFFF"
-                                          Data="M9,16.17L4.83,12L3.41,13.41L9,19L21,7L19.59,5.59L9,16.17Z" />
-                            </Border>
-                            <StackPanel VerticalAlignment="Center" Spacing="1">
-                                <TextBlock FontSize="19"
-                                           FontWeight="SemiBold"
-                                           Text="rtools" />
-                                <TextBlock Classes="muted"
-                                           Text="个人工作台" />
-                            </StackPanel>
-                        </StackPanel>
-                        <Border Classes="cardSubtle"
-                                Padding="12,10">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <StackPanel Spacing="2">
-                                    <TextBlock FontSize="12"
-                                               FontWeight="SemiBold"
-                                               Text="今日进度" />
-                                    <TextBlock Classes="muted"
-                                               Text="{Binding SyncSummary}" />
-                                </StackPanel>
-                                <TextBlock Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           FontSize="15"
-                                           FontWeight="SemiBold"
-                                           Text="{Binding ActiveCount}" />
-                            </Grid>
-                        </Border>
-                    </StackPanel>
-
-                    <StackPanel Grid.Row="1">
-                        <TextBlock Margin="12,0,0,6"
-                                   Classes="muted"
-                                   Text="工作区" />
-                        <Button Classes="nav"
-                                Command="{Binding ShowTasksCommand}">
-                            <Grid ColumnDefinitions="28,*">
-                                <PathIcon Width="17"
-                                          Height="17"
-                                          Data="M4,5H20M4,12H20M4,19H20" />
-                                <TextBlock Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource RtTextSecondaryBrush}"
-                                           Text="全部任务" />
-                            </Grid>
-                        </Button>
-                        <Button Classes="nav"
-                                Command="{Binding OpenMonthCommand}">
-                            <Grid ColumnDefinitions="28,*">
-                                <PathIcon Width="17"
-                                          Height="17"
-                                          Data="M19,3H18V1H16V3H8V1H6V3H5C3.89,3 3,3.9 3,5V19C3,20.1 3.89,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M19,19H5V8H19V19Z" />
-                                <TextBlock Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource RtTextSecondaryBrush}"
-                                           Text="月视图" />
-                            </Grid>
-                        </Button>
-                        <Button Classes="nav"
-                                Command="{Binding OpenTransferCommand}">
-                            <Grid ColumnDefinitions="28,*">
-                                <PathIcon Width="17"
-                                          Height="17"
-                                          Data="M2,21L23,12L2,3V10L17,12L2,14V21Z" />
-                                <TextBlock Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource RtTextSecondaryBrush}"
-                                           Text="局域网互传" />
-                            </Grid>
-                        </Button>
-                        <Separator Margin="8,12" />
-                        <TextBlock Margin="12,0,0,6"
-                                   Classes="muted"
-                                   Text="应用" />
-                        <Button Classes="nav"
-                                Command="{Binding OpenSettingsCommand}">
-                            <Grid ColumnDefinitions="28,*">
-                                <PathIcon Width="17"
-                                          Height="17"
-                                          Data="M19.14,12.94C19.18,12.64 19.2,12.33 19.2,12C19.2,11.68 19.18,11.36 19.13,11.06L21.16,9.48C21.34,9.34 21.39,9.07 21.28,8.86L19.36,5.54C19.25,5.32 18.99,5.24 18.76,5.32L14.89,6.88C14.35,6.47 13.74,6.14 13.08,5.91L12.5,2.8C12.47,2.56 12.26,2.38 12,2.38H8.16C7.9,2.38 7.69,2.56 7.66,2.8L7.08,5.91C6.42,6.14 5.81,6.47 5.27,6.88L1.4,5.32C1.17,5.24 0.91,5.32 0.8,5.54L-1.12,8.86C-1.23,9.08 -1.18,9.36 -1,9.48L1.03,11.06C0.98,11.36 0.96,11.68 0.96,12C0.96,12.32 0.98,12.64 1.03,12.94L-1,14.52C-1.18,14.66 -1.23,14.93 -1.12,15.14L0.8,18.46C0.91,18.68 1.17,18.76 1.4,18.68L5.27,17.12C5.81,17.53 6.42,17.86 7.08,18.09L7.66,21.2C7.69,21.44 7.9,21.62 8.16,21.62H12C12.26,21.62 12.47,21.44 12.5,21.2L13.08,18.09C13.74,17.86 14.35,17.53 14.89,17.12L18.76,18.68C18.99,18.76 19.25,18.68 19.36,18.46L21.28,15.14C21.39,14.92 21.34,14.65 21.16,14.52L19.14,12.94M12,16C9.79,16 8,14.21 8,12S9.79,8 12,8S16,9.79 16,12S14.21,16 12,16Z" />
-                                <TextBlock Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource RtTextSecondaryBrush}"
-                                           Text="设置" />
-                            </Grid>
-                        </Button>
-                    </StackPanel>
-
-                    <Border Grid.Row="2"
-                            Classes="cardSubtle"
-                            Padding="12,10">
-                        <StackPanel Spacing="4">
-                            <TextBlock FontSize="11"
-                                       Foreground="{DynamicResource RtSuccessBrush}"
-                                       Text="{Binding EngineStatus}" />
-                            <TextBlock Classes="muted"
-                                       Text="{Binding SyncSummary}" />
-                        </StackPanel>
+        <ui:FANavigationView x:Name="MainNavigation"
+                            PaneDisplayMode="Left"
+                            AlwaysShowHeader="False"
+                            IsBackButtonVisible="False"
+                            IsPaneToggleButtonVisible="False"
+                            IsSettingsVisible="False"
+                            OpenPaneLength="224"
+                            CompactPaneLength="48"
+                            ItemInvoked="OnNavigationItemInvoked"
+                            Background="Transparent">
+            <ui:FANavigationView.PaneHeader>
+                <StackPanel Margin="4,4,0,12"
+                            Orientation="Horizontal"
+                            Spacing="10">
+                    <Border Width="34"
+                            Height="34"
+                            CornerRadius="8"
+                            Background="{DynamicResource SystemAccentColor}">
+                        <PathIcon Width="17"
+                                  Height="17"
+                                  Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                  Data="M9,16.17L4.83,12L3.41,13.41L9,19L21,7L19.59,5.59L9,16.17Z" />
                     </Border>
-                </Grid>
-            </Border>
+                    <StackPanel VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Text="rtools"
+                                   Theme="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Text="{Binding ActiveCount, StringFormat='个人工作台 · 待完成 {0} 项'}"
+                                   Theme="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </ui:FANavigationView.PaneHeader>
+            <ui:FANavigationView.MenuItems>
+                <ui:FANavigationViewItem x:Name="TasksNavigationItem"
+                                         Content="任务"
+                                         IconSource="List"
+                                         Tag="tasks"
+                                         IsSelected="True" />
+                <ui:FANavigationViewItem x:Name="MonthNavigationItem"
+                                         Content="月视图"
+                                         IconSource="Calendar"
+                                         Tag="month" />
+                <ui:FANavigationViewItem x:Name="TransferNavigationItem"
+                                         Content="局域网互传"
+                                         IconSource="Send"
+                                         Tag="transfer" />
+                <ui:FANavigationViewItemSeparator />
+                <ui:FANavigationViewItem x:Name="SettingsNavigationItem"
+                                         Content="设置"
+                                         IconSource="Setting"
+                                         Tag="settings" />
+            </ui:FANavigationView.MenuItems>
+            <ui:FANavigationView.PaneFooter>
+                <Border Margin="4,8,4,12"
+                        Padding="12,10"
+                        CornerRadius="8"
+                        Background="{DynamicResource SubtleFillColorSecondaryBrush}">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding EngineStatus}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource SystemFillColorSuccessBrush}" />
+                        <TextBlock Text="{Binding SyncSummary}"
+                                   Theme="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+            </ui:FANavigationView.PaneFooter>
 
-            <Grid Grid.Column="1">
-                <Grid Margin="26,20,26,18"
+            <Grid>
+                <Grid Margin="30,24,30,20"
                       IsVisible="{Binding IsTasksPage}"
                       RowDefinitions="Auto,Auto,Auto,*">
                     <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,18">
@@ -146,15 +99,12 @@
                         <StackPanel Grid.Column="1"
                                     Orientation="Horizontal"
                                     VerticalAlignment="Center"
-                                    Spacing="8">
-                            <Border Classes="cardSubtle" Padding="10,6">
-                                <TextBlock Classes="caption"
-                                           Text="{Binding ActiveCount, StringFormat='待完成 {0}'}" />
-                            </Border>
-                            <Border Classes="cardSubtle" Padding="10,6">
-                                <TextBlock Classes="caption"
-                                           Text="{Binding CompletedTasks.Count, StringFormat='今日完成 {0}'}" />
-                            </Border>
+                                    Spacing="16">
+                            <TextBlock Theme="{StaticResource BodyStrongTextBlockStyle}"
+                                       Text="{Binding ActiveCount, StringFormat='待完成 {0}'}" />
+                            <TextBlock Theme="{StaticResource BodyStrongTextBlockStyle}"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       Text="{Binding CompletedTasks.Count, StringFormat='今日完成 {0}'}" />
                         </StackPanel>
                     </Grid>
 
@@ -205,16 +155,13 @@
                         </Grid>
                     </Border>
 
-                    <Border Grid.Row="2"
-                            Margin="0,0,0,10"
-                            Padding="12,9"
-                            CornerRadius="7"
-                            Background="{DynamicResource RtDangerSubtleBrush}"
-                            IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                        <TextBlock Foreground="{DynamicResource RtDangerBrush}"
-                                   Text="{Binding ErrorMessage}"
-                                   TextWrapping="Wrap" />
-                    </Border>
+                    <ui:FAInfoBar Grid.Row="2"
+                                  Margin="0,0,0,10"
+                                  Title="任务操作失败"
+                                  Severity="Error"
+                                  IsClosable="False"
+                                  IsOpen="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                  Message="{Binding ErrorMessage}" />
 
                     <ScrollViewer Grid.Row="3">
                         <StackPanel>
@@ -240,7 +187,6 @@
                                                             VerticalAlignment="Center"
                                                             Spacing="5">
                                                     <TextBlock FontSize="14"
-                                                               FontWeight="SemiBold"
                                                                Text="{Binding Title}"
                                                                TextWrapping="Wrap" />
                                                     <StackPanel Orientation="Horizontal" Spacing="7">
@@ -254,10 +200,10 @@
                                                         </Border>
                                                         <Border Padding="7,2"
                                                                 CornerRadius="4"
-                                                                Background="{DynamicResource RtAccentSubtleBrush}"
+                                                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                                                 IsVisible="{Binding IsMediumPriority}">
                                                             <TextBlock FontSize="10"
-                                                                       Foreground="{DynamicResource RtAccentBrush}"
+                                                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
                                                                        Text="中优先级" />
                                                         </Border>
                                                         <Border Padding="7,2"
@@ -381,12 +327,12 @@
                     </ScrollViewer>
                 </Grid>
 
-                <Grid Margin="26,20,26,18"
+                <Grid Margin="30,24,30,20"
                       IsVisible="{Binding IsMonthOpen}"
                       RowDefinitions="Auto,*,Auto">
                     <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,14">
                         <Button Classes="icon"
-                                Command="{Binding CloseMonthCommand}"
+                                Click="OnBackToTasksClicked"
                                 ToolTip.Tip="返回任务">
                             <PathIcon Width="17"
                                       Height="17"
@@ -398,7 +344,7 @@
                         </StackPanel>
                         <Button Grid.Column="2"
                                 Classes="primary"
-                                Command="{Binding CloseMonthCommand}"
+                                Click="OnBackToTasksClicked"
                                 Content="返回任务" />
                     </Grid>
                     <Border Grid.Row="1" Classes="card">
@@ -458,10 +404,10 @@
                                                         <Border Grid.Column="1"
                                                                 Padding="5,1"
                                                                 CornerRadius="7"
-                                                                Background="{DynamicResource RtAccentSubtleBrush}"
+                                                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                                                 IsVisible="{Binding IsToday}">
                                                             <TextBlock FontSize="8"
-                                                                       Foreground="{DynamicResource RtAccentBrush}"
+                                                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
                                                                        Text="今天" />
                                                         </Border>
                                                     </Grid>
@@ -489,12 +435,12 @@
                                Text="{Binding MonthTasks.Count, StringFormat='本月共完成 {0} 项'}" />
                 </Grid>
 
-                <Grid Margin="26,20,26,18"
+                <Grid Margin="30,24,30,20"
                       IsVisible="{Binding IsSettingsOpen}"
                       RowDefinitions="Auto,*,Auto">
                     <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,14">
                         <Button Classes="icon"
-                                Command="{Binding CloseSettingsCommand}"
+                                Click="OnBackToTasksClicked"
                                 ToolTip.Tip="返回任务">
                             <PathIcon Width="17"
                                       Height="17"
@@ -513,125 +459,139 @@
                     <ScrollViewer Grid.Row="1"
                                   DataContext="{Binding Settings}">
                         <StackPanel Spacing="12">
-                            <Border Classes="card">
-                                <Grid ColumnDefinitions="*,1.15*" ColumnSpacing="20">
-                                    <StackPanel Spacing="10">
-                                        <TextBlock Classes="h2" Text="外观与行为" />
-                                        <StackPanel Spacing="4">
-                                            <TextBlock Classes="caption" Text="窗口材质" />
-                                            <ComboBox HorizontalAlignment="Stretch"
-                                                      ItemsSource="{Binding Materials}"
-                                                      SelectedItem="{Binding SelectedMaterial}" />
-                                        </StackPanel>
-                                        <TextBlock Classes="muted"
-                                                   Text="Mica 与 Acrylic 由 Windows 合成；系统关闭透明效果时会自动回退。"
-                                                   TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Spacing="12">
+                            <ui:FASettingsExpander Header="外观与行为"
+                                                   Description="窗口材质、挂件和启动行为"
+                                                   IconSource="DarkTheme"
+                                                   IsExpanded="True">
+                                <ui:FASettingsExpanderItem Content="窗口材质"
+                                                           Description="Mica 与 Acrylic 由 Windows 合成，系统关闭透明效果时自动回退">
+                                    <ui:FASettingsExpanderItem.Footer>
+                                        <ComboBox Width="190"
+                                                  ItemsSource="{Binding Materials}"
+                                                  SelectedItem="{Binding SelectedMaterial}" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="作为桌面挂件运行">
+                                    <ui:FASettingsExpanderItem.Footer>
                                         <CheckBox IsChecked="{Binding IsDesktopWidget}"
-                                                  Click="OnDesktopWidgetChanged"
-                                                  Content="作为桌面挂件运行" />
-                                        <CheckBox IsChecked="{Binding CollapseOnSnap}"
-                                                  Content="吸附窗口边缘后收起" />
-                                        <CheckBox IsChecked="{Binding Autostart}"
-                                                  Content="开机自动启动" />
-                                        <StackPanel Spacing="4">
-                                            <TextBlock Classes="caption" Text="默认提醒提前时间" />
-                                            <ComboBox ItemsSource="{Binding ReminderOffsets}"
-                                                      SelectedItem="{Binding DefaultReminderOffset}" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
+                                                  Click="OnDesktopWidgetChanged" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="吸附窗口边缘后收起">
+                                    <ui:FASettingsExpanderItem.Footer>
+                                        <CheckBox IsChecked="{Binding CollapseOnSnap}" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="开机自动启动">
+                                    <ui:FASettingsExpanderItem.Footer>
+                                        <CheckBox IsChecked="{Binding Autostart}" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="默认提前提醒">
+                                    <ui:FASettingsExpanderItem.Footer>
+                                        <ComboBox Width="110"
+                                                  ItemsSource="{Binding ReminderOffsets}"
+                                                  SelectedItem="{Binding DefaultReminderOffset}" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                            </ui:FASettingsExpander>
 
-                            <Border Classes="card">
-                                <StackPanel Spacing="10">
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <StackPanel Spacing="3">
-                                            <TextBlock Classes="h2" Text="跨设备同步" />
-                                            <TextBlock Classes="caption" Text="{Binding SyncState}" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <ui:FASettingsExpander Header="跨设备同步"
+                                                   Description="{Binding SyncState, StringFormat='连接状态：{0}'}"
+                                                   IconSource="Sync">
+                                <ui:FASettingsExpanderItem Content="服务端地址"
+                                                           Description="rtools 同步服务">
+                                    <ui:FASettingsExpanderItem.Footer>
+                                        <TextBox Width="340" Text="{Binding SyncServerUrl}" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="一次性接入码"
+                                                           Description="用于将这台设备接入现有同步空间">
+                                    <ui:FASettingsExpanderItem.Footer>
+                                        <TextBox Width="210"
+                                                 PlaceholderText="粘贴接入码"
+                                                 Text="{Binding PairingCode}" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="设备名称">
+                                    <ui:FASettingsExpanderItem.Footer>
+                                        <TextBox Width="190" Text="{Binding DeviceName}" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="同步操作">
+                                    <ui:FASettingsExpanderItem.Footer>
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Classes="primary"
+                                                    Command="{Binding PairCommand}"
+                                                    Content="接入此设备" />
                                             <Button Command="{Binding SyncNowCommand}" Content="立即同步" />
+                                            <Button Command="{Binding CreatePairingCodeCommand}"
+                                                    Content="生成接入码" />
                                             <Button Command="{Binding LogoutSyncCommand}" Content="退出同步" />
                                         </StackPanel>
-                                    </Grid>
-                                    <Grid ColumnDefinitions="1.4*,1*,1*" ColumnSpacing="10">
-                                        <TextBox PlaceholderText="服务端 URL"
-                                                 Text="{Binding SyncServerUrl}" />
-                                        <TextBox Grid.Column="1"
-                                                 PlaceholderText="一次性接入码"
-                                                 Text="{Binding PairingCode}" />
-                                        <TextBox Grid.Column="2"
-                                                 PlaceholderText="设备名称"
-                                                 Text="{Binding DeviceName}" />
-                                    </Grid>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Classes="primary"
-                                                Command="{Binding PairCommand}"
-                                                Content="接入此设备" />
-                                        <Button Command="{Binding CreatePairingCodeCommand}"
-                                                Content="生成新设备接入码" />
-                                    </StackPanel>
-                                    <TextBlock Classes="muted"
-                                               Text="{Binding PairingCode, StringFormat='当前接入码：{0}'}" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="已接入设备">
                                     <ItemsControl ItemsSource="{Binding Devices}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Border Classes="cardSubtle" Margin="0,3">
-                                                    <Grid ColumnDefinitions="*,Auto">
-                                                        <StackPanel Spacing="2">
-                                                            <TextBlock Text="{Binding Name}" />
-                                                            <TextBlock Classes="muted" Text="{Binding Id}" />
-                                                        </StackPanel>
-                                                        <Button Grid.Column="1"
-                                                                Command="{Binding $parent[Window].DataContext.Settings.RevokeDeviceCommand}"
-                                                                CommandParameter="{Binding}"
-                                                                Content="撤销" />
-                                                    </Grid>
-                                                </Border>
+                                                <Grid Margin="0,6"
+                                                      ColumnDefinitions="*,Auto">
+                                                    <StackPanel Spacing="2">
+                                                        <TextBlock Text="{Binding Name}"
+                                                                   Theme="{StaticResource BodyStrongTextBlockStyle}" />
+                                                        <TextBlock Text="{Binding Id}"
+                                                                   Theme="{StaticResource CaptionTextBlockStyle}"
+                                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1"
+                                                            VerticalAlignment="Center"
+                                                            Command="{Binding $parent[Window].DataContext.Settings.RevokeDeviceCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="撤销" />
+                                                </Grid>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                </StackPanel>
-                            </Border>
+                                </ui:FASettingsExpanderItem>
+                            </ui:FASettingsExpander>
 
-                            <Border Classes="card">
-                                <StackPanel Spacing="10">
-                                    <Grid ColumnDefinitions="*,Auto">
-                                        <StackPanel Spacing="3">
-                                            <TextBlock Classes="h2" Text="MCP 接入" />
-                                            <TextBlock Classes="caption"
-                                                       Text="{Binding McpRunning, StringFormat='运行状态：{0}'}" />
+                            <ui:FASettingsExpander Header="MCP 接入"
+                                                   Description="{Binding McpRunning, StringFormat='服务运行状态：{0}'}"
+                                                   IconSource="DeveloperTools">
+                                <ui:FASettingsExpanderItem Content="启用 MCP 服务">
+                                    <ui:FASettingsExpanderItem.Footer>
+                                        <CheckBox IsChecked="{Binding McpEnabled, Mode=OneWay}"
+                                                  Command="{Binding ToggleMcpCommand}" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="访问令牌">
+                                    <ui:FASettingsExpanderItem.Footer>
+                                        <StackPanel Width="430" Spacing="8">
+                                            <TextBox IsReadOnly="True"
+                                                     Text="{Binding McpToken}"
+                                                     FontFamily="Cascadia Mono, Consolas" />
+                                            <Button HorizontalAlignment="Left"
+                                                    Command="{Binding RotateMcpTokenCommand}"
+                                                    Content="重置 MCP token" />
                                         </StackPanel>
-                                        <CheckBox Grid.Column="1"
-                                                  IsChecked="{Binding McpEnabled, Mode=OneWay}"
-                                                  Command="{Binding ToggleMcpCommand}"
-                                                  Content="启用 MCP" />
-                                    </Grid>
-                                    <TextBox IsReadOnly="True"
-                                             Text="{Binding McpToken}"
-                                             FontFamily="Cascadia Mono, Consolas"
-                                             TextWrapping="Wrap" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="客户端配置模板">
                                     <TextBlock FontSize="11"
                                                FontFamily="Cascadia Mono, Consolas"
-                                               Foreground="{DynamicResource RtTextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                Text="{Binding McpTemplates}"
                                                TextWrapping="Wrap" />
-                                    <Button HorizontalAlignment="Left"
-                                            Command="{Binding RotateMcpTokenCommand}"
-                                            Content="重置 MCP token" />
-                                </StackPanel>
-                            </Border>
+                                </ui:FASettingsExpanderItem>
+                            </ui:FASettingsExpander>
 
-                            <Border Classes="card">
-                                <Grid ColumnDefinitions="1.15*,1*" ColumnSpacing="20">
-                                    <StackPanel Spacing="10">
-                                        <TextBlock Classes="h2" Text="更新与组件" />
-                                        <TextBlock Classes="caption"
-                                                   Text="{Binding Version, StringFormat='rtools 版本 {0}'}" />
-                                        <TextBlock Classes="muted"
-                                                   Text="{Binding UpdateStatus}" />
+                            <ui:FASettingsExpander Header="更新与组件"
+                                                   Description="{Binding Version, StringFormat='rtools {0}'}"
+                                                   IconSource="Refresh">
+                                <ui:FASettingsExpanderItem Content="软件更新"
+                                                           Description="{Binding UpdateStatus}">
+                                    <ui:FASettingsExpanderItem.Footer>
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <Button Command="{Binding CheckUpdatesCommand}"
                                                     Content="检查更新" />
@@ -640,16 +600,21 @@
                                                     Classes="primary"
                                                     Content="下载并安装" />
                                         </StackPanel>
-                                        <Separator />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="局域网互传">
+                                    <ui:FASettingsExpanderItem.Footer>
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <Button Command="{Binding ToggleTransferCommand}"
                                                     Content="启动 / 停止互传" />
-                                            <Button Command="{Binding $parent[Window].DataContext.OpenTransferCommand}"
+                                            <Button Click="OnOpenTransferFromSettingsClicked"
                                                     Content="打开互传" />
                                         </StackPanel>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Spacing="9">
-                                        <TextBlock Classes="h2" Text="数据" />
+                                    </ui:FASettingsExpanderItem.Footer>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem Content="数据导入与导出"
+                                                           Description="JSON、TickTick CSV 与 iCalendar">
+                                    <StackPanel Spacing="8">
                                         <WrapPanel>
                                             <Button Margin="0,0,7,7"
                                                     Click="OnImportJson"
@@ -667,20 +632,18 @@
                                                     Click="OnExportIcal"
                                                     Content="导出 iCalendar" />
                                         </WrapPanel>
-                                        <Border Padding="10"
-                                                CornerRadius="6"
-                                                Background="{DynamicResource RtDangerSubtleBrush}"
-                                                IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                                            <TextBlock Foreground="{DynamicResource RtDangerBrush}"
-                                                       Text="{Binding ErrorMessage}"
-                                                       TextWrapping="Wrap" />
-                                        </Border>
-                                        <TextBlock Foreground="{DynamicResource RtSuccessBrush}"
+                                        <TextBlock Foreground="{DynamicResource SystemFillColorSuccessBrush}"
                                                    Text="{Binding StatusMessage}"
                                                    TextWrapping="Wrap" />
                                     </StackPanel>
-                                </Grid>
-                            </Border>
+                                </ui:FASettingsExpanderItem>
+                                <ui:FASettingsExpanderItem>
+                                    <ui:FAInfoBar Title="操作失败"
+                                                Severity="Error"
+                                                IsOpen="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                Message="{Binding ErrorMessage}" />
+                                </ui:FASettingsExpanderItem>
+                            </ui:FASettingsExpander>
                         </StackPanel>
                     </ScrollViewer>
                     <Grid Grid.Row="2"
@@ -698,13 +661,13 @@
                     </Grid>
                 </Grid>
 
-                <Grid Margin="26,20,26,18"
+                <Grid Margin="30,24,30,20"
                       IsVisible="{Binding $parent[Window].DataContext.IsTransferOpen}"
                       DataContext="{Binding Transfer}"
                       RowDefinitions="Auto,*,Auto">
                     <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,14">
                         <Button Classes="icon"
-                                Command="{Binding $parent[Window].DataContext.CloseTransferCommand}"
+                                Click="OnBackToTasksClicked"
                                 ToolTip.Tip="返回任务">
                             <PathIcon Width="17"
                                       Height="17"
@@ -929,7 +892,7 @@
                     </Grid>
                 </Grid>
             </Grid>
-        </Grid>
+        </ui:FANavigationView>
 
         <Border Background="#70000000"
                 IsVisible="{Binding SelectedTask, Converter={x:Static ObjectConverters.IsNotNull}}"

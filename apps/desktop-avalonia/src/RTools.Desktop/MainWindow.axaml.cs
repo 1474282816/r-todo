@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using FluentAvalonia.UI.Controls;
 using RTools.Desktop.Interop;
 using RTools.Desktop.Services;
 using RTools.Desktop.ViewModels;
@@ -218,6 +219,52 @@ public partial class MainWindow : Window
         {
             viewModel.AddTaskCommand.Execute(null);
             e.Handled = true;
+        }
+    }
+
+    private async void OnNavigationItemInvoked(
+        object? sender,
+        FANavigationViewItemInvokedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel viewModel ||
+            e.InvokedItemContainer is not FANavigationViewItem item)
+        {
+            return;
+        }
+        switch (item.Tag)
+        {
+            case "tasks":
+                viewModel.ShowTasksCommand.Execute(null);
+                break;
+            case "month":
+                await viewModel.OpenMonthCommand.ExecuteAsync(null);
+                break;
+            case "transfer":
+                await viewModel.OpenTransferCommand.ExecuteAsync(null);
+                break;
+            case "settings":
+                await viewModel.OpenSettingsCommand.ExecuteAsync(null);
+                break;
+        }
+    }
+
+    private void OnBackToTasksClicked(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            viewModel.ShowTasksCommand.Execute(null);
+            MainNavigation.SelectedItem = TasksNavigationItem;
+        }
+    }
+
+    private async void OnOpenTransferFromSettingsClicked(
+        object? sender,
+        RoutedEventArgs e)
+    {
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            await viewModel.OpenTransferCommand.ExecuteAsync(null);
+            MainNavigation.SelectedItem = TransferNavigationItem;
         }
     }
 

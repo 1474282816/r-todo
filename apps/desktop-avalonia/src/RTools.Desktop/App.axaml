@@ -1,5 +1,6 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sty="using:FluentAvalonia.Styling"
              x:Class="RTools.Desktop.App"
              RequestedThemeVariant="Default">
     <Application.Resources>
@@ -14,8 +15,6 @@
                     <SolidColorBrush x:Key="RtTextPrimaryBrush" Color="#E4000000" />
                     <SolidColorBrush x:Key="RtTextSecondaryBrush" Color="#99000000" />
                     <SolidColorBrush x:Key="RtTextTertiaryBrush" Color="#66000000" />
-                    <SolidColorBrush x:Key="RtAccentBrush" Color="#FF0067C0" />
-                    <SolidColorBrush x:Key="RtAccentSubtleBrush" Color="#180067C0" />
                     <SolidColorBrush x:Key="RtDangerBrush" Color="#FFC42B1C" />
                     <SolidColorBrush x:Key="RtDangerSubtleBrush" Color="#18C42B1C" />
                     <SolidColorBrush x:Key="RtSuccessBrush" Color="#FF0F7B0F" />
@@ -30,8 +29,6 @@
                     <SolidColorBrush x:Key="RtTextPrimaryBrush" Color="#FFFFFFFF" />
                     <SolidColorBrush x:Key="RtTextSecondaryBrush" Color="#B3FFFFFF" />
                     <SolidColorBrush x:Key="RtTextTertiaryBrush" Color="#73FFFFFF" />
-                    <SolidColorBrush x:Key="RtAccentBrush" Color="#FF60CDFF" />
-                    <SolidColorBrush x:Key="RtAccentSubtleBrush" Color="#2660CDFF" />
                     <SolidColorBrush x:Key="RtDangerBrush" Color="#FFFF99A4" />
                     <SolidColorBrush x:Key="RtDangerSubtleBrush" Color="#26FF99A4" />
                     <SolidColorBrush x:Key="RtSuccessBrush" Color="#FF6CCB5F" />
@@ -46,8 +43,6 @@
                     <SolidColorBrush x:Key="RtTextPrimaryBrush" Color="#FFFFFFFF" />
                     <SolidColorBrush x:Key="RtTextSecondaryBrush" Color="#B3FFFFFF" />
                     <SolidColorBrush x:Key="RtTextTertiaryBrush" Color="#73FFFFFF" />
-                    <SolidColorBrush x:Key="RtAccentBrush" Color="#FF60CDFF" />
-                    <SolidColorBrush x:Key="RtAccentSubtleBrush" Color="#2660CDFF" />
                     <SolidColorBrush x:Key="RtDangerBrush" Color="#FFFF99A4" />
                     <SolidColorBrush x:Key="RtDangerSubtleBrush" Color="#26FF99A4" />
                     <SolidColorBrush x:Key="RtSuccessBrush" Color="#FF6CCB5F" />
@@ -58,7 +53,8 @@
     </Application.Resources>
 
     <Application.Styles>
-        <FluentTheme />
+        <sty:FluentAvaloniaTheme PreferSystemTheme="True"
+                                 PreferUserAccentColor="True" />
         <Style Selector="Window">
             <Setter Property="Background" Value="Transparent" />
         </Style>
@@ -74,8 +70,9 @@
             <Setter Property="MinHeight" Value="34" />
         </Style>
         <Style Selector="Button.primary">
-            <Setter Property="Background" Value="{DynamicResource RtAccentBrush}" />
-            <Setter Property="Foreground" Value="#FFFFFFFF" />
+            <Setter Property="Background" Value="{DynamicResource SystemAccentColor}" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
@@ -125,11 +122,11 @@
         </Style>
         <Style Selector="Button.priority.selected">
             <Setter Property="Background"
-                    Value="{DynamicResource RtAccentSubtleBrush}" />
+                    Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
             <Setter Property="BorderBrush"
-                    Value="{DynamicResource RtAccentBrush}" />
+                    Value="{DynamicResource SystemAccentColor}" />
             <Setter Property="Foreground"
-                    Value="{DynamicResource RtAccentBrush}" />
+                    Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
         </Style>
         <Style Selector="Button.link">
             <Setter Property="MinHeight" Value="28" />
@@ -137,7 +134,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Foreground"
-                    Value="{DynamicResource RtAccentBrush}" />
+                    Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
         </Style>
         <Style Selector="TextBlock.h1">
             <Setter Property="FontSize" Value="24" />
@@ -174,16 +171,14 @@
         </Style>
         <Style Selector="Border.taskRow">
             <Setter Property="CornerRadius" Value="7" />
-            <Setter Property="Padding" Value="10,8" />
-            <Setter Property="Background" Value="#10000000" />
-            <Setter Property="BorderBrush"
-                    Value="{DynamicResource RtStrokeBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Margin" Value="0,3" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Margin" Value="0,1" />
         </Style>
         <Style Selector="Border.taskRow:pointerover">
             <Setter Property="Background"
-                    Value="{DynamicResource RtSurfaceStrongBrush}" />
+                    Value="{DynamicResource RtSurfaceSubtleBrush}" />
         </Style>
         <Style Selector="CheckBox.taskCheck">
             <Setter Property="MinWidth" Value="26" />
