@@ -404,6 +404,31 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         }
     }
 
+    public async Task ReorderTaskToIndexAsync(TaskItem task, int targetIndex)
+    {
+        var currentIndex = ActiveTasks.IndexOf(task);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+        targetIndex = Math.Clamp(targetIndex, 0, ActiveTasks.Count - 1);
+        if (currentIndex == targetIndex)
+        {
+            return;
+        }
+        ActiveTasks.Move(currentIndex, targetIndex);
+        try
+        {
+            ErrorMessage = null;
+            await _engine.ReorderTasksAsync(ActiveTasks.Select(item => item.Id).ToList());
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            await ReloadSafeAsync();
+        }
+    }
+
     public async Task ReloadAsync(CancellationToken cancellationToken = default)
     {
         var tasks = await _engine.ListTasksAsync(cancellationToken);

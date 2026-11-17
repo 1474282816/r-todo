@@ -101,6 +101,28 @@ public sealed class MainWindowViewModelTests
     }
 
     [Fact]
+    public async Task ReorderTaskToIndex_MovesTaskAndPersistsOrder()
+    {
+        var engine = new InMemoryEngineClient();
+        await engine.StartAsync();
+        await using var vm = new MainWindowViewModel(engine);
+        await vm.InitializeAsync();
+        vm.NewTaskTitle = "第一条";
+        await vm.AddTaskCommand.ExecuteAsync(null);
+        vm.NewTaskTitle = "第二条";
+        await vm.AddTaskCommand.ExecuteAsync(null);
+
+        var first = vm.ActiveTasks.Single(task => task.Title == "第一条");
+        var second = vm.ActiveTasks.Single(task => task.Title == "第二条");
+        await vm.ReorderTaskToIndexAsync(
+            first,
+            vm.ActiveTasks.IndexOf(second) + 1);
+
+        Assert.Equal("第二条", vm.ActiveTasks[0].Title);
+        Assert.Equal("第一条", vm.ActiveTasks[1].Title);
+    }
+
+    [Fact]
     public async Task ImportJson_PreservesCompletionAndSortOrder()
     {
         var path = Path.GetTempFileName();

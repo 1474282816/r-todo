@@ -2,7 +2,9 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using RTools.Desktop.Interop;
+using RTools.Desktop.Models;
 using RTools.Desktop.Services;
 using RTools.Desktop.ViewModels;
 
@@ -12,6 +14,9 @@ public sealed partial class DesktopWidgetWindow : Window
 {
     private IEngineClient? _engine;
     private bool _allowClose;
+    private TaskItem? _dragTask;
+    private Point _dragStartPoint;
+    private bool _draggingTask;
 
     public DesktopWidgetWindow()
     {
@@ -164,5 +169,86 @@ public sealed partial class DesktopWidgetWindow : Window
         {
             await viewModel.SaveEditedTaskAsync();
         }
+    }
+
+    private void OnTaskRowPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel viewModel ||
+            sender is not Border border ||
+            border.DataContext is not TaskItem task ||
+            e.Source is Control source &&
+            source.FindAncestorOfType<Button>() is not null)
+        {
+            return;
+        }
+        _dragTask = task;
+        _dragStartPoint = e.GetPosition(WidgetTaskList);
+        _draggingTask = false;
+        e.Pointer.Capture(border);
+    }
+
+    private void OnTaskRowPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_dragTask is null)
+        {
+            return;
+        }
+        var current = e.GetPosition(WidgetTaskList);
+        if (!_draggingTask &&
+            Math.Abs(current.Y - _dragStartPoint.Y) < 6)
+        {
+            return;
+        }
+        _draggingTask = true;
+        _dragTask.IsDragging = true;
+        e.Pointer.Capture(sender as IInputElement);
+    }
+
+    private async void OnTaskRowPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        var task = _dragTask;
+        var moved = _draggingTask;
+        _dragTask = null;
+        _draggingTask = false;
+        e.Pointer.Capture(null);
+        if (task is null)
+        {
+            return;
+        }
+        task.IsDragging = false;
+        if (!moved || DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+        var y = e.GetPosition(WidgetTaskList).Y + WidgetTaskList.Bounds.Y;
+        var rowHeight = 36.0;
+        var targetIndex = Math.Clamp(
+            (int)Math.Round(y / rowHeight),
+            0,
+            viewModel.ActiveTasks.Count - 1);
+        await viewModel.ReorderTaskToIndexAsync(task, targetIndex);
+    }
+
+    private void OnTaskRowPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        if (_dragTask is not null)
+        {
+            _dragTask.IsDragging = false;
+        }
+        _dragTask = null;
+        _draggingTask = false;
+    }
+
+    private void OnTaskTitlePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Border border ||
+            border.DataContext is not TaskItem task ||
+            DataContext is not MainWindowViewModel viewModel ||
+            _draggingTask)
+        {
+            return;
+        }
+        viewModel.EditTaskCommand.Execute(task);
+        e.Handled = true;
     }
 }
