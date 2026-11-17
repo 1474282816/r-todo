@@ -159,6 +159,7 @@ fn sender_info(fingerprint: &str) -> RegisterDtoV2 {
         port: 53317,
         protocol: ProtocolType::Https,
         download: false,
+        host: None,
     }
 }
 

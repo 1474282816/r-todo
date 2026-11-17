@@ -40,6 +40,7 @@ fn register_dto(port: u16) -> RegisterDtoV2 {
         port,
         protocol: ProtocolType::Http,
         download: false,
+        host: None,
     }
 }
 

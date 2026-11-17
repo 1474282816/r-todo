@@ -474,6 +474,64 @@ pub fn save_chat_message(
     Ok(())
 }
 
+pub fn enqueue_chat_message(
+    conn: &Connection,
+    target: &str,
+    payload: &str,
+    message_id: &str,
+) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO transfer_outbox(
+            id,target,payload,attempts,last_error,created_at)
+         VALUES(?1,?2,?3,0,NULL,?4)",
+        params![
+            message_id,
+            target,
+            payload,
+            chrono::Utc::now().timestamp_millis()
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn list_chat_outbox(conn: &Connection) -> Result<Vec<(String, String, String, i64, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id,target,payload,attempts,created_at
+         FROM transfer_outbox ORDER BY created_at ASC LIMIT 100",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, i64>(4)?,
+        ))
+    })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub fn remove_chat_outbox(conn: &Connection, id: &str) -> Result<()> {
+    conn.execute("DELETE FROM transfer_outbox WHERE id=?1", [id])?;
+    Ok(())
+}
+
+pub fn mark_chat_outbox_error(conn: &Connection, id: &str, error: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE transfer_outbox SET attempts=attempts+1,last_error=?1 WHERE id=?2",
+        params![error, id],
+    )?;
+    Ok(())
+}
+
+pub fn patch_chat_message_status(conn: &Connection, id: &str, status: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE messages SET status=?1 WHERE id=?2",
+        params![status, id],
+    )?;
+    Ok(())
+}
+
 pub fn mark_conversation_read(conn: &Connection, id: &str) -> Result<()> {
     conn.execute("UPDATE conversations SET unread=0 WHERE id=?1", [id])?;
     Ok(())

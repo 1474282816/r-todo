@@ -8,7 +8,7 @@
 | 子目录 | `packages/core`（crate 名 `localsend`） |
 | Rev | `58955fd54ef1e18e89ec30e60f46754084a80942`（master，2026-11-08） |
 | 许可证 | Apache-2.0，见本目录 `LICENSE` |
-| 修改 | **仅一处纯加法**：新增 r-todo 会话端点（见下方「r-todo 会话式扩展」）。既有 v2 路径、DTO、状态机未改 |
+| 修改 | 新增 rtools 会话端点，并为 v2 register / prepare-upload 增加可选的 `host` 字段。旧客户端省略该字段，行为不变 |
 
 ## 为什么 vendor 而不是 git 依赖
 
@@ -35,7 +35,7 @@ localsend = { path = "../vendor/localsend-core", features = ["discovery"] }
 只启用 `features = ["discovery"]`（= `http` + `crypto` + `multicast`），不使用 WebRTC
 与 Web 分享页。`lib.rs` 里无条件 `pub mod webrtc;` 已确认内部被 feature 门控，编译通过。
 
-## r-todo 会话式扩展（唯一的本地改动）
+## rtools 会话式扩展
 
 会话式互传需要一条文本/元数据通道，而 v2 路由表是硬编码 `match`，壳层没有注入点。
 为继续复用同一端口、同一套 mTLS 证书与证书钉住，这里做了**纯加法**：
@@ -45,7 +45,8 @@ localsend = { path = "../vendor/localsend-core", features = ["discovery"] }
 | `src/http/server/chat.rs` | 新增：`GET /api/rtodo/v1/capabilities`、`POST /api/rtodo/v1/message`，把 JSON 交给壳层注册的 sink；发送方 fingerprint 取自 mTLS 证书 |
 | `src/http/server/mod.rs` | 新增 `pub mod chat;` 与两条 match arm，其余分支不动 |
 | `src/http/client/v2.rs` | 新增 `post_json()`，复用已有 reqwest client / TLS 配置 |
+| `src/http/dto.rs`、`src/http/dto_v2.rs` | 新增可选 `host` 兼容字段，让手机在 NAT/端口转发后仍可上报可达局域网地址 |
 
-既有 `/api/localsend/v2/*` 路由、`FileDto` 等 DTO 与单会话槽逻辑**一行未改**，因此与官方
-LocalSend 客户端的双向互通由构造保证；官方客户端请求新路径会走原有 404 兜底。
-升级上游时按上面「升级步骤」覆盖后，重新应用本节三处改动即可。
+既有 `/api/localsend/v2/*` 路由和单会话槽逻辑未改；`host` 使用可选字段，官方客户端
+不发送时仍使用 TCP 来源地址，兼容性不变。升级上游时按上面「升级步骤」覆盖后，
+重新应用本节改动即可。

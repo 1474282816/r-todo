@@ -85,8 +85,11 @@ public sealed partial class TransferViewModel : ObservableObject
             await RefreshDevicesAsync();
             await LoadTrustedPeersAsync();
             await RefreshConversationsAsync();
-            var pending = await _engine.GetPendingIncomingAsync();
-            PendingIncoming = pending.FirstOrDefault();
+            await RefreshPendingIncomingAsync();
+            if (IsRunning)
+            {
+                await StartIncomingRecoveryAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -107,6 +110,7 @@ public sealed partial class TransferViewModel : ObservableObject
             {
                 await RefreshDevicesAsync();
                 await LoadTrustedPeersAsync();
+                await StartIncomingRecoveryAsync();
             }
         }
         catch (Exception ex)
@@ -234,26 +238,38 @@ public sealed partial class TransferViewModel : ObservableObject
     [RelayCommand]
     private async Task AcceptIncomingAsync()
     {
-        if (PendingIncoming is null)
+        var incoming = PendingIncoming;
+        if (incoming is null)
         {
             return;
         }
+        // 用户确认后立即关闭弹窗，后续文件写入由传输进度列表反馈。
+        PendingIncoming = null;
         IsBusy = true;
         try
         {
             await _engine.RespondIncomingAsync(
-                PendingIncoming.SessionId,
-                PendingIncoming.Files.Select(file => file.Id).ToList());
-            await _engine.TrustChatPeerAsync(PendingIncoming.Device.Fingerprint);
-            _trustedFingerprints.Add(PendingIncoming.Device.Fingerprint);
-            await _engine.SendTrustMessageAsync(
-                PendingIncoming.Device.Fingerprint,
-                Alias);
-            StatusMessage = $"正在接收 {PendingIncoming.Files.Count} 个文件";
-            PendingIncoming = null;
+                incoming.SessionId,
+                incoming.Files.Select(file => file.Id).ToList());
+            await _engine.TrustChatPeerAsync(incoming.Device.Fingerprint);
+            _trustedFingerprints.Add(incoming.Device.Fingerprint);
+            try
+            {
+                await _engine.SendTrustMessageAsync(
+                    incoming.Device.Fingerprint,
+                    Alias);
+            }
+            catch (Exception ex)
+            {
+                // 回执失败只影响“对端下次免确认”，不能回滚本次接收。
+                StatusMessage = $"文件正在接收；信任回执将稍后重试：{ex.Message}";
+                return;
+            }
+            StatusMessage = $"正在接收 {incoming.Files.Count} 个文件";
         }
         catch (Exception ex)
         {
+            PendingIncoming = incoming;
             ErrorMessage = ex.Message;
         }
         finally
@@ -265,17 +281,19 @@ public sealed partial class TransferViewModel : ObservableObject
     [RelayCommand]
     private async Task RejectIncomingAsync()
     {
-        if (PendingIncoming is null)
+        var incoming = PendingIncoming;
+        if (incoming is null)
         {
             return;
         }
+        PendingIncoming = null;
         try
         {
-            await _engine.RejectIncomingAsync(PendingIncoming.SessionId);
-            PendingIncoming = null;
+            await _engine.RejectIncomingAsync(incoming.SessionId);
         }
         catch (Exception ex)
         {
+            PendingIncoming = incoming;
             ErrorMessage = ex.Message;
         }
     }
@@ -466,6 +484,20 @@ public sealed partial class TransferViewModel : ObservableObject
         }
     }
 
+    public async Task RefreshPendingIncomingAsync()
+    {
+        var pending = await _engine.GetPendingIncomingAsync();
+        var next = pending.FirstOrDefault();
+        if (next is null)
+        {
+            PendingIncoming = null;
+        }
+        else if (PendingIncoming?.SessionId != next.SessionId)
+        {
+            PendingIncoming = next;
+        }
+    }
+
     public async Task RefreshConversationsAsync()
     {
         var conversations = await _engine.ListConversationsAsync();
@@ -582,6 +614,10 @@ public sealed partial class TransferViewModel : ObservableObject
         else if (type == "session_ended")
         {
             var id = payload.GetProperty("session_id").GetString() ?? "";
+            if (PendingIncoming?.SessionId == id)
+            {
+                PendingIncoming = null;
+            }
             var session = Sessions.FirstOrDefault(item => item.Id == id);
             if (session is not null)
             {
@@ -649,6 +685,51 @@ public sealed partial class TransferViewModel : ObservableObject
             {
                 _trustedFingerprints.Add(device.Fingerprint);
             }
+        }
+    }
+
+    private CancellationTokenSource? _incomingRecovery;
+
+    private Task StartIncomingRecoveryAsync()
+    {
+        if (_incomingRecovery is not null)
+        {
+            return Task.CompletedTask;
+        }
+        var cancellation = new CancellationTokenSource();
+        _incomingRecovery = cancellation;
+        _ = RunIncomingRecoveryAsync(cancellation);
+        return Task.CompletedTask;
+    }
+
+    private async Task RunIncomingRecoveryAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+            while (await timer.WaitForNextTickAsync(cancellation.Token))
+            {
+                if (!IsRunning)
+                {
+                    continue;
+                }
+                await RefreshPendingIncomingAsync();
+                try
+                {
+                    await _engine.FlushChatOutboxAsync(cancellation.Token);
+                }
+                catch
+                {
+                    // 消息重试由 Engine 持久化，下一轮继续。
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
         }
     }
 

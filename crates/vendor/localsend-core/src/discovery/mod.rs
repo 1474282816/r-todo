@@ -136,6 +136,7 @@ impl DiscoveryState {
             port: self.device.port,
             protocol: self.device.protocol,
             download: self.device.download,
+            host: None,
         }
     }
 

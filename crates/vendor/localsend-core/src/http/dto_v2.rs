@@ -47,6 +47,12 @@ pub struct RegisterDtoV2 {
     /// Whether the download API (sections 5.2, 5.3) is active.
     #[serde(default)]
     pub download: bool,
+
+    /// rtools 兼容扩展：发送方声明的可达局域网地址。
+    ///
+    /// 官方 LocalSend 会忽略未知字段；缺失时调用方仍使用 TCP 连接地址。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
 }
 
 /// Register response DTO for v2.2 protocol.
@@ -235,6 +241,7 @@ mod tests {
                 port: 53317,
                 protocol: ProtocolType::Https,
                 download: false,
+                host: None,
             },
             files: HashMap::from([(
                 "file1".to_string(),

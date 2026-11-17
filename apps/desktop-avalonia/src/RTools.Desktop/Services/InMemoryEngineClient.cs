@@ -493,6 +493,9 @@ public sealed class InMemoryEngineClient : IEngineClient
         CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
+    public Task FlushChatOutboxAsync(CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
     public ValueTask DisposeAsync()
     {
         IsConnected = false;

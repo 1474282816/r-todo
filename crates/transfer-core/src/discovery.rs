@@ -201,11 +201,17 @@ pub(crate) fn platform_name() -> String {
 
 /// 本机可用的 IPv4 地址（用于 /24 兜底扫描）。
 ///
-/// 用「向公网地址 connect 一个 UDP socket 再读 local_addr」的经典技巧，
-/// 不实际发包，也不依赖额外 crate。
+/// 用多个目标做 UDP connect 探测并读取 local_addr：同一台机器可能同时有
+/// Wi-Fi、VPN、虚拟网卡，仅依赖一个默认路由会把手机实际可达的局域网地址漏掉。
 pub(crate) fn local_ipv4_addresses() -> Vec<Ipv4Addr> {
     let mut out: Vec<Ipv4Addr> = Vec::new();
-    for probe in ["8.8.8.8:80", "1.1.1.1:80", "192.168.1.1:80"] {
+    for probe in [
+        "8.8.8.8:80",
+        "1.1.1.1:80",
+        "192.168.10.1:80",
+        "192.168.1.1:80",
+        "10.0.2.2:80",
+    ] {
         let Ok(socket) = UdpSocket::bind("0.0.0.0:0") else {
             continue;
         };

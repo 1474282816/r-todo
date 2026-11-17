@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
  * SAF 选择 / cache 暂存 / MediaStore 落盘。
  *
  * 约定：
- * - 发送：content:// → cacheDir/transfer/outbox/<uuid>-<name>，把**普通文件路径**交给 Rust
+ * - 发送：content:// → cacheDir/transfer/outbox/<uuid>/<name>，把**普通文件路径**交给 Rust
  * - 接收：Rust 写 cacheDir/transfer/inbox/<fileId>，本类再复制到 Downloads/rtools
  */
 class FileBridge(private val context: Context) {
@@ -46,7 +46,9 @@ class FileBridge(private val context: Context) {
                 val mime = resolver.getType(uri)
                 val safeName = sanitizeFileName(displayName)
 
-                val target = File(outDir, "${UUID.randomUUID()}-$safeName")
+                // UUID 只用于隔离同一次暂存，保留原文件名供接收端直接展示。
+                val stagedDir = File(outDir, UUID.randomUUID().toString()).apply { mkdirs() }
+                val target = File(stagedDir, safeName)
                 resolver.openInputStream(uri)?.use { input ->
                     target.outputStream().use { output -> input.copyTo(output) }
                 } ?: return@mapNotNull null
@@ -146,7 +148,7 @@ class FileBridge(private val context: Context) {
         val deadline = System.currentTimeMillis() - STALE_MS
         listOf(outboxDir(), inboxDir()).forEach { dir ->
             dir.listFiles()?.forEach { file ->
-                if (file.lastModified() < deadline) file.delete()
+                if (file.lastModified() < deadline) file.deleteRecursively()
             }
         }
     }

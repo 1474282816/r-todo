@@ -643,6 +643,9 @@ public sealed class EngineProcessClient : IEngineClient
         CancellationToken cancellationToken = default)
         => SendVoidAsync("chat.delete_file", new { path }, cancellationToken);
 
+    public Task FlushChatOutboxAsync(CancellationToken cancellationToken = default)
+        => SendVoidAsync("chat.flush_outbox", new { }, cancellationToken);
+
     private Process StartEngineProcess()
     {
         var exeName = OperatingSystem.IsWindows() ? "rtools-engine.exe" : "rtools-engine";

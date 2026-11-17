@@ -260,18 +260,14 @@ class ChatController extends ChangeNotifier {
 
   // ─────────────────── 发送 ───────────────────
 
-  TransferChannel? _channelOf(String fingerprint) {
-    for (final device in devices) {
-      if (device.fingerprint.toUpperCase() == fingerprint.toUpperCase()) {
-        return device.preferredChannel;
-      }
-    }
-    return null;
-  }
-
   Future<void> _post(ChatMessage message, String target) async {
-    final channel = _channelOf(target);
-    if (channel == null) throw StateError('目标设备不在线，消息已排队');
+    final device = firstOrNullWhere(
+      devices,
+      (item) => item.fingerprint.toUpperCase() == target.toUpperCase(),
+    );
+    if (device == null || device.channels.isEmpty) {
+      throw StateError('目标设备不在线，消息已排队');
+    }
     final dir = await transfer.identityDirectory();
     final context = SecurityContext(withTrustedRoots: false)
       ..useCertificateChainBytes(
@@ -283,20 +279,30 @@ class ChatController extends ChangeNotifier {
       ..badCertificateCallback =
           (X509Certificate cert, String host, int port) => true;
     try {
-      final uri = Uri(
-        scheme: channel.protocol == TransferProtocol.http ? 'http' : 'https',
-        host: channel.host,
-        port: channel.port,
-        path: '/api/rtodo/v1/message',
-      );
-      final request = await client.postUrl(uri);
-      request.headers.contentType = ContentType.json;
-      request.write(jsonEncode(message.forPeer(selfFingerprint).toJson()));
-      final response = await request.close();
-      await response.drain<void>();
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw StateError('HTTP ${response.statusCode}');
+      Object? lastError;
+      for (final channel in device.channels) {
+        try {
+          final uri = Uri(
+            scheme:
+                channel.protocol == TransferProtocol.http ? 'http' : 'https',
+            host: channel.host,
+            port: channel.port,
+            path: '/api/rtodo/v1/message',
+          );
+          final request = await client.postUrl(uri);
+          request.headers.contentType = ContentType.json;
+          request.write(jsonEncode(message.forPeer(selfFingerprint).toJson()));
+          final response = await request.close();
+          await response.drain<void>();
+          if (response.statusCode < 200 || response.statusCode >= 300) {
+            throw StateError('HTTP ${response.statusCode}');
+          }
+          return;
+        } catch (error) {
+          lastError = error;
+        }
       }
+      throw StateError('所有设备地址均不可达: $lastError');
     } finally {
       client.close();
     }

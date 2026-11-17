@@ -46,6 +46,10 @@ pub struct RegisterDto {
 
     #[serde(default, skip_serializing_if = "is_default")]
     pub has_web_interface: bool,
+
+    /// rtools 兼容扩展：发送方声明的可达局域网地址。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
 }
 
 impl From<RegisterDto> for RegisterDtoV2 {
@@ -59,6 +63,7 @@ impl From<RegisterDto> for RegisterDtoV2 {
             port: v3.port,
             protocol: v3.protocol,
             download: v3.has_web_interface,
+            host: v3.host,
         }
     }
 }

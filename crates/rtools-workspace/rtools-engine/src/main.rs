@@ -772,24 +772,81 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
             Ok(json!({"ok":true}))
         }
         "chat.send_text" => {
-            let message: rtodo_transfer_core::ChatMessage =
+            let mut message: rtodo_transfer_core::ChatMessage =
                 rpc_try!(serde_json::from_value(payload["message"].clone()));
             let fingerprint = payload["fingerprint"].as_str().unwrap_or_default();
-            rpc_try!(
-                state
-                    .transfer
-                    .lock()
-                    .await
-                    .send_message(fingerprint, &message)
-                    .await
-            );
             let conn = rpc_try!(db::open(&state.db_path));
+            message.status = rtodo_transfer_core::MessageStatus::Pending;
             rpc_try!(db::save_chat_message(&conn, &message, "send"));
+            let send_result = state
+                .transfer
+                .lock()
+                .await
+                .send_message(fingerprint, &message)
+                .await;
+            if let Err(error) = send_result {
+                rpc_try!(db::enqueue_chat_message(
+                    &conn,
+                    &message.conversation_id,
+                    &serde_json::to_string(&message).unwrap_or_default(),
+                    &message.id,
+                ));
+                let _ = state.events.send(json!({
+                    "event":"chat.changed",
+                    "payload":{
+                        "conversation_id":message.conversation_id,
+                        "queued":true,
+                        "error":error
+                    }
+                }));
+                return Ok(json!({"ok":true,"queued":true}));
+            }
+            rpc_try!(db::patch_chat_message_status(&conn, &message.id, "sent"));
             let _ = state.events.send(json!({
                 "event":"chat.changed",
                 "payload":{"conversation_id":message.conversation_id}
             }));
-            Ok(json!({"ok":true}))
+            Ok(json!({"ok":true,"queued":false}))
+        }
+        "chat.flush_outbox" => {
+            let conn = rpc_try!(db::open(&state.db_path));
+            let pending = rpc_try!(db::list_chat_outbox(&conn));
+            let mut sent = 0usize;
+            let now = chrono::Utc::now().timestamp_millis();
+            for (id, target, payload, attempts, created_at) in pending {
+                // 离线设备按指数退避重试，避免每 2 秒发起一轮连接。
+                let backoff_ms = (60_000_i64)
+                    .saturating_mul(1_i64 << attempts.clamp(0, 6) as u32)
+                    .min(3_600_000);
+                if attempts > 0 && now.saturating_sub(created_at) < backoff_ms {
+                    continue;
+                }
+                let message: rtodo_transfer_core::ChatMessage =
+                    rpc_try!(serde_json::from_str(&payload));
+                match state
+                    .transfer
+                    .lock()
+                    .await
+                    .send_message(&target, &message)
+                    .await
+                {
+                    Ok(()) => {
+                        rpc_try!(db::remove_chat_outbox(&conn, &id));
+                        rpc_try!(db::patch_chat_message_status(&conn, &message.id, "sent"));
+                        sent += 1;
+                    }
+                    Err(error) => {
+                        rpc_try!(db::mark_chat_outbox_error(&conn, &id, &error.to_string()));
+                    }
+                }
+            }
+            if sent > 0 {
+                let _ = state.events.send(json!({
+                    "event":"chat.changed",
+                    "payload":{"flushed":sent}
+                }));
+            }
+            Ok(json!({"ok":true,"sent":sent}))
         }
         "chat.trusted" => {
             let conn = rpc_try!(db::open(&state.db_path));

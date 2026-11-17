@@ -133,6 +133,7 @@ public interface IEngineClient : IAsyncDisposable
     Task DeleteChatFileAsync(
         string path,
         CancellationToken cancellationToken = default);
+    Task FlushChatOutboxAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class TaskChangedEventArgs : EventArgs
@@ -233,6 +234,7 @@ public sealed class TransferDevicePeer
 {
     public required string Alias { get; init; }
     public required string Fingerprint { get; init; }
+    public string? Host { get; init; }
 }
 
 public sealed class ChatConversation

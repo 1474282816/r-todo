@@ -166,6 +166,7 @@ fn sender_info() -> RegisterDtoV2 {
         port: 53317,
         protocol: ProtocolType::Http,
         download: false,
+        host: None,
     }
 }
 

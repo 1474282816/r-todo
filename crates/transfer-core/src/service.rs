@@ -29,6 +29,8 @@ const RECEIVE_PROGRESS_THROTTLE: Duration = Duration::from_millis(100);
 
 pub(crate) struct ReceiveSession {
     pub(crate) ip: String,
+    /// 发送方声明的可达局域网地址；仅用于反向消息和取消。
+    pub(crate) peer_host: Option<String>,
     /// 发送方的 HTTP 端口/协议：取消时要反向通知它停发
     pub(crate) peer_port: u16,
     pub(crate) peer_protocol: localsend::model::discovery::ProtocolType,
@@ -296,6 +298,9 @@ impl TransferService {
             pin,
             alias: self.inner.config.alias.clone(),
             local_port: self.inner.port,
+            local_host: discovery::local_ipv4_addresses()
+                .first()
+                .map(ToString::to_string),
             fingerprint: self.inner.identity.fingerprint.clone(),
             event_tx: self.inner.event_tx.clone(),
         };
@@ -344,24 +349,41 @@ impl TransferService {
             )
         })?;
 
-        let channel = device.channels.first().cloned().ok_or_else(|| {
+        // 同一设备可能同时有局域网地址、回环地址和 VPN 地址；逐个尝试，
+        // 避免首个不可达地址让消息永久留在队列。
+        let channels = device.channels.clone();
+        if channels.is_empty() {
+            return Err(client::protocol_error(
+                ErrorScope::Send,
+                ErrorCode::Unknown,
+                "目标设备没有可用地址".to_string(),
+            ));
+        }
+
+        let mut last_error = None;
+        for channel in channels {
+            match client::send_chat_message(
+                &self.inner.identity,
+                &channel.host,
+                channel.port,
+                discovery::protocol_type_of(channel.protocol),
+                &device.fingerprint,
+                &self.inner.identity.fingerprint,
+                message,
+            )
+            .await
+            {
+                Ok(()) => return Ok(()),
+                Err(error) => last_error = Some(error),
+            }
+        }
+        Err(last_error.unwrap_or_else(|| {
             client::protocol_error(
                 ErrorScope::Send,
                 ErrorCode::Unknown,
                 "目标设备没有可用地址".to_string(),
             )
-        })?;
-
-        client::send_chat_message(
-            &self.inner.identity,
-            &channel.host,
-            channel.port,
-            discovery::protocol_type_of(channel.protocol),
-            &device.fingerprint,
-            &self.inner.identity.fingerprint,
-            message,
-        )
-        .await
+        }))
     }
 
     /// 接收确认：接受的文件 id 子集；传空表示拒绝。
@@ -531,7 +553,10 @@ impl TransferService {
             {
                 let identity = self.inner.identity.clone();
                 let sid = session_id.to_string();
-                let ip = session.ip.clone();
+                let ip = session
+                    .peer_host
+                    .clone()
+                    .unwrap_or_else(|| session.ip.clone());
                 let port = session.peer_port;
                 let protocol = session.peer_protocol;
                 tokio::spawn(async move {
@@ -721,9 +746,10 @@ async fn handle_server_event(
             decision_tx,
         } => {
             let ip_text = ip.to_string();
+            let peer_host = declared_peer_host(&info, &ip_text);
             discovery::remember_registered(
                 discovery,
-                &ip_text,
+                peer_host.as_deref().unwrap_or(&ip_text),
                 &info,
                 cert_fingerprint.as_deref(),
             )
@@ -756,6 +782,7 @@ async fn handle_server_event(
                 session_id.clone(),
                 ReceiveSession {
                     ip: ip_text.clone(),
+                    peer_host,
                     peer_port: info.port,
                     peer_protocol: info.protocol,
                     device: device_summary.clone(),
@@ -925,6 +952,77 @@ async fn handle_server_event(
             )
             .await;
         }
+    }
+}
+
+/// 选择发送方声明的局域网地址。
+///
+/// LocalSend 标准的 `info` 不含地址字段。这里读取兼容扩展 `host`：
+/// 只有私网/链路本地地址或普通主机名才采用，避免对端把反向请求引向
+/// 任意公网目标；字段缺失时继续使用 TCP 连接地址。
+fn declared_peer_host(info: &localsend::http::dto_v2::RegisterDtoV2, ip: &str) -> Option<String> {
+    let host = info
+        .host
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+
+    if host == ip {
+        return None;
+    }
+    let normalized = host.split('%').next().unwrap_or(host);
+    match normalized.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(v4)) => v4.is_private() || v4.is_link_local(),
+        Ok(std::net::IpAddr::V6(v6)) => v6.is_unique_local() || v6.is_unicast_link_local(),
+        Err(_) => {
+            host.len() <= 253
+                && host
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | ':' | '%'))
+        }
+    }
+    .then(|| host.to_string())
+}
+
+#[cfg(test)]
+mod address_tests {
+    use super::declared_peer_host;
+    use localsend::http::dto_v2::RegisterDtoV2;
+    use localsend::model::discovery::ProtocolType;
+
+    fn register(host: Option<&str>) -> RegisterDtoV2 {
+        RegisterDtoV2 {
+            alias: "phone".into(),
+            version: "2.2".into(),
+            device_model: Some("Android".into()),
+            device_type: None,
+            fingerprint: "FP".into(),
+            port: 53317,
+            protocol: ProtocolType::Https,
+            download: false,
+            host: host.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn declared_host_accepts_private_lan_address() {
+        assert_eq!(
+            declared_peer_host(&register(Some("192.168.10.3")), "127.0.0.1").as_deref(),
+            Some("192.168.10.3")
+        );
+    }
+
+    #[test]
+    fn declared_host_rejects_public_address() {
+        assert_eq!(
+            declared_peer_host(&register(Some("8.8.8.8")), "127.0.0.1"),
+            None
+        );
+    }
+
+    #[test]
+    fn declared_host_is_optional_for_official_clients() {
+        assert_eq!(declared_peer_host(&register(None), "192.168.10.3"), None);
     }
 }
 

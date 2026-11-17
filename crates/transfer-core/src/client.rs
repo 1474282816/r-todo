@@ -55,6 +55,7 @@ pub(crate) struct SendRequest {
     pub(crate) pin: Option<String>,
     pub(crate) alias: String,
     pub(crate) local_port: u16,
+    pub(crate) local_host: Option<String>,
     pub(crate) fingerprint: String,
     pub(crate) event_tx: EventSender,
 }
@@ -185,6 +186,7 @@ async fn send_inner(state: &SendState, request: &SendRequest) -> Result<(), Tran
                 port: request.local_port,
                 protocol: ProtocolType::Https,
                 has_web_interface: false,
+                host: request.local_host.clone(),
             },
         )
         .await
@@ -227,6 +229,7 @@ async fn send_inner(state: &SendState, request: &SendRequest) -> Result<(), Tran
                     port: request.local_port,
                     protocol: ProtocolType::Https,
                     has_web_interface: false,
+                    host: request.local_host.clone(),
                 },
                 files: files_dto,
             },
