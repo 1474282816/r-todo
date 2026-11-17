@@ -24,7 +24,7 @@ E:\artifacts\release-final-tauri\RTools_0.3.0_x64-setup.exe
 当前自用构建安装包 SHA-256：
 
 ```text
-BFD450C644EDD0F7B74307E8F41231B0F2C68D63390CE767A69140B22DC580BE
+0DF7090286CBC45407D710A6044BF16AF27689227A96ED1CBF961288A98D4CDC
 ```
 
 ## 2. 架构
@@ -71,7 +71,7 @@ Tauri Rust 壳负责：
 | 删除按钮变红 | 通过 | 350ms foreground 过渡 |
 | 圆环悬浮高亮 | 通过 | 挂件截图 |
 | 设置面板 | 通过 | Release UI 截图 |
-| 材质与透明度 | 通过 | Mica 和 82% 透明度 |
+| 窗口材质 | 通过 | Windows 11 原生 SystemBackdrop |
 | 同步状态和设备列表 | 通过 | `https://todo.renrunqi.com`，三台设备 |
 | MCP | 通过 | Engine 运行中，token 和四个模板可见 |
 | 互传启动与停止 | 通过 | 新端口 `54417` 端到端调用 |
@@ -118,7 +118,8 @@ Windows Hyper-V/WSL 将 `53317` 和 `53318` 纳入 TCP 保留段。RTools 默认
   内容和壁纸。
 - Mica 和 Mica Alt 使用微软原生壁纸取色语义，不反映窗口背后的应用内容。
 - 已移除旧版“读取壁纸、高斯模糊、转成 PNG data URI”的静态模拟路径。
-- WebView 只叠加一层与透明度滑杆联动的轻量 tint，背景保持透明。
+- WebView 只叠加固定轻量 tint，背景保持透明。
+- 原“透明度”滑杆已移除，避免提供用户难以感知且语义不准确的调节项。
 
 ## 7. 已知限制
 

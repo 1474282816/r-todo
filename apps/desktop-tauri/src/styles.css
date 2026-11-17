@@ -15,13 +15,7 @@ body {
   background: transparent;
 }
 
-/*
- * 窗口底色变量。
- * --win-alpha：不透明度（设置面板滑杆写入 system.ts），默认 0.82。
- * 这里必须是 0~1 的 number，CSS 里用现代 rgb() 空格+斜杠语法拼。
- */
 body {
-  --win-alpha: 0.82;
   --win-rgb-light: 240 240 243;
   --win-rgb-dark: 24 24 27;
 }
@@ -32,47 +26,47 @@ body {
  */
 body[data-view="main"] #root {
   border-radius: 12px;
-  background: rgb(var(--win-rgb-light) / calc(0.08 * var(--win-alpha)));
+  background: rgb(var(--win-rgb-light) / 0.08);
 }
 @media (prefers-color-scheme: dark) {
   body[data-view="main"] #root {
-    background: rgb(var(--win-rgb-dark) / calc(0.18 * var(--win-alpha)));
+    background: rgb(var(--win-rgb-dark) / 0.18);
   }
 }
 
 body[data-view="main"][data-backdrop="translucent"] #root {
-  background: rgb(var(--win-rgb-light) / calc(0.05 * var(--win-alpha)));
+  background: rgb(var(--win-rgb-light) / 0.05);
 }
 @media (prefers-color-scheme: dark) {
   body[data-view="main"][data-backdrop="translucent"] #root {
-    background: rgb(var(--win-rgb-dark) / calc(0.12 * var(--win-alpha)));
+    background: rgb(var(--win-rgb-dark) / 0.12);
   }
 }
 
 body[data-view="main"][data-backdrop="mica"] #root {
-  background: rgb(var(--win-rgb-light) / calc(0.11 * var(--win-alpha)));
+  background: rgb(var(--win-rgb-light) / 0.11);
 }
 @media (prefers-color-scheme: dark) {
   body[data-view="main"][data-backdrop="mica"] #root {
-    background: rgb(var(--win-rgb-dark) / calc(0.2 * var(--win-alpha)));
+    background: rgb(var(--win-rgb-dark) / 0.2);
   }
 }
 
 body[data-view="main"][data-backdrop="mica_alt"] #root {
-  background: rgb(var(--win-rgb-light) / calc(0.14 * var(--win-alpha)));
+  background: rgb(var(--win-rgb-light) / 0.14);
 }
 @media (prefers-color-scheme: dark) {
   body[data-view="main"][data-backdrop="mica_alt"] #root {
-    background: rgb(var(--win-rgb-dark) / calc(0.24 * var(--win-alpha)));
+    background: rgb(var(--win-rgb-dark) / 0.24);
   }
 }
 
 body[data-view="main"][data-backdrop="acrylic"] #root {
-  background: rgb(var(--win-rgb-light) / calc(0.08 * var(--win-alpha)));
+  background: rgb(var(--win-rgb-light) / 0.08);
 }
 @media (prefers-color-scheme: dark) {
   body[data-view="main"][data-backdrop="acrylic"] #root {
-    background: rgb(var(--win-rgb-dark) / calc(0.16 * var(--win-alpha)));
+    background: rgb(var(--win-rgb-dark) / 0.16);
   }
 }
 
@@ -86,11 +80,11 @@ body[data-view="main"][data-backdrop="none"] #root {
 }
 
 body:not([data-view="main"]) #root {
-  background: rgb(var(--win-rgb-light) / calc(0.08 * var(--win-alpha)));
+  background: rgb(var(--win-rgb-light) / 0.08);
 }
 @media (prefers-color-scheme: dark) {
   body:not([data-view="main"]) #root {
-    background: rgb(var(--win-rgb-dark) / calc(0.18 * var(--win-alpha)));
+    background: rgb(var(--win-rgb-dark) / 0.18);
   }
 }
 

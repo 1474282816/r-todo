@@ -75,23 +75,6 @@ export function getBackdropPreference(): Backdrop {
   return normalize(localStorage.getItem(BACKDROP_KEY)) ?? "translucent";
 }
 
-/** 窗口不透明度偏好，0.2 ~ 1.0，默认 0.82 */
-const OPACITY_KEY = "rtools/opacity";
-const MIN_OPACITY = 0.2;
-
-export function getWindowOpacity(): number {
-  const raw = localStorage.getItem(OPACITY_KEY);
-  const n = raw === null ? NaN : Number(raw);
-  if (!Number.isFinite(n)) return 0.82;
-  return Math.min(1, Math.max(MIN_OPACITY, n));
-}
-
-export function setWindowOpacity(alpha: number): void {
-  const v = Math.min(1, Math.max(MIN_OPACITY, alpha));
-  localStorage.setItem(OPACITY_KEY, String(v));
-  document.body.style.setProperty("--win-alpha", String(v));
-}
-
 /** 安全调用：命令不存在（非 Windows）时静默忽略 */
 async function safeInvoke(cmd: string, args: Record<string, unknown>): Promise<void> {
   try {
@@ -104,7 +87,6 @@ async function safeInvoke(cmd: string, args: Record<string, unknown>): Promise<v
 /** 应用 Windows 原生 DWM 材质。 */
 async function refreshWindowVisual(): Promise<void> {
   const kind = getBackdropPreference();
-  document.body.style.setProperty("--win-alpha", String(getWindowOpacity()));
   document.body.style.removeProperty("--wp-mica");
 
   if (kind === "none") {

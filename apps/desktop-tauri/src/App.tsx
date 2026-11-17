@@ -34,7 +34,6 @@ import {
   isEmbeddedPreference,
   restoreBackdrop,
   setWindowBackdrop,
-  setWindowOpacity,
 } from "./lib/system";
 import type { Task } from "./lib/types";
 import { silentCheckUpdate, subscribeUpdateStatus } from "./lib/updater";
@@ -98,10 +97,6 @@ export default function App() {
       const material = await getSettingSafe("material");
       if (material) {
         await setWindowBackdrop(material as never).catch(() => undefined);
-      }
-      const opacity = Number(await getSettingSafe("opacity"));
-      if (Number.isFinite(opacity) && opacity >= 0.2 && opacity <= 1) {
-        setWindowOpacity(opacity);
       }
     })();
   }, []);

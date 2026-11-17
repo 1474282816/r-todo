@@ -36,12 +36,10 @@ import {
   BACKDROP_OPTIONS,
   embedToDesktop,
   getBackdropPreference,
-  getWindowOpacity,
   isAutostartEnabled,
   isEmbeddedPreference,
   setAutostart,
   setWindowBackdrop,
-  setWindowOpacity,
   unembedFromDesktop,
   type Backdrop,
 } from "../../lib/system";
@@ -82,7 +80,6 @@ export function SettingsPanel({ open, onClose }: Props) {
 
   const [embedded, setEmbedded] = useState(isEmbeddedPreference());
   const [backdrop, setBackdropState] = useState<Backdrop>(getBackdropPreference());
-  const [opacity, setOpacityState] = useState(getWindowOpacity());
   const [autostart, setAutostartState] = useState(false);
   const [collapse, setCollapseState] = useState(isCollapseOnSnapEnabled());
   const [defaultOffset, setDefaultOffsetState] = useState(getDefaultOffset());
@@ -135,13 +132,11 @@ export function SettingsPanel({ open, onClose }: Props) {
         const [
           widget,
           material,
-          storedOpacity,
           collapseOnSnap,
           storedOffset,
         ] = await Promise.all([
           getSetting("desktop_widget"),
           getSetting("material"),
-          getSetting("opacity"),
           getSetting("collapse_on_snap"),
           getSetting("default_reminder_offset"),
         ]);
@@ -149,12 +144,6 @@ export function SettingsPanel({ open, onClose }: Props) {
         if (material) {
           const matched = BACKDROP_OPTIONS.find((item) => item.value === material)?.value;
           if (matched) setBackdropState(matched);
-        }
-        if (storedOpacity) {
-          const parsed = Number(storedOpacity);
-          if (Number.isFinite(parsed)) {
-            setOpacityState(Math.min(1, Math.max(0.2, parsed)));
-          }
         }
         if (collapseOnSnap !== null) setCollapseState(collapseOnSnap !== "false");
         if (storedOffset) {
@@ -239,12 +228,6 @@ export function SettingsPanel({ open, onClose }: Props) {
     } catch (backdropError) {
       setError(String(backdropError));
     }
-  }
-
-  async function changeOpacity(next: number) {
-    setOpacityState(next);
-    setWindowOpacity(next);
-    await setSetting("opacity", String(next));
   }
 
   async function toggleAutostart() {
@@ -557,20 +540,6 @@ export function SettingsPanel({ open, onClose }: Props) {
                       {option.label}
                     </button>
                   ))}
-                </div>
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="w-12 text-[10px] text-neutral-500">不透度</span>
-                  <input
-                    type="range"
-                    min={20}
-                    max={100}
-                    value={Math.round(opacity * 100)}
-                    onChange={(event) => void changeOpacity(Number(event.target.value) / 100)}
-                    className="h-1 flex-1 cursor-pointer accent-neutral-700 dark:accent-white"
-                  />
-                  <span className="w-8 text-right font-mono text-[10px] text-neutral-500">
-                    {Math.round(opacity * 100)}%
-                  </span>
                 </div>
               </div>
             </Section>
