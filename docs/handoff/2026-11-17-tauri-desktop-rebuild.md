@@ -21,7 +21,7 @@ E:\artifacts\release-final-tauri\rtools-desktop-tauri.exe
 E:\artifacts\release-final-tauri\RTools_0.3.0_x64-setup.exe
 ```
 
-安装包 SHA-256：
+当前自用构建安装包 SHA-256：
 
 ```text
 76060203FF156511F1818E8B6A7CA59B043464D1F598EA3B1B8A3966648CCF7D
@@ -66,7 +66,7 @@ Tauri Rust 壳负责：
 | 编辑面板 | 通过 | 隔离数据库副本 UI 操作 |
 | 完成与取消完成 | 通过 | 隔离数据库副本 UI 操作 |
 | 删除二次确认 | 通过 | 挂件 UI 截图与自动取消 |
-| 拖拽排序 | 通过 | 旧交互代码迁入并测量行位置 |
+| 拖拽排序 | 已实现 | 采用旧版 Reorder 交互，待最终手势回归 |
 | 悬浮删除渐显渐隐 | 通过 | 180ms opacity 过渡 |
 | 删除按钮变红 | 通过 | 350ms foreground 过渡 |
 | 圆环悬浮高亮 | 通过 | 挂件截图 |
@@ -82,7 +82,7 @@ Tauri Rust 壳负责：
 | 托盘 | 通过 | 显示、隐藏、互传、退出 |
 | 单实例 | 通过 | Tauri single-instance 插件 |
 | 开机自启 | 通过 | 现有设置和插件 |
-| 更新 | 配置完成 | GitHub Release endpoint |
+| 更新 | 待发布验证 | GitHub Release endpoint 已配置 |
 
 ## 4. 自动测试
 
@@ -116,6 +116,10 @@ Windows Hyper-V/WSL 将 `53317` 和 `53318` 纳入 TCP 保留段。RTools 默认
   互传和同步使用正常。
 - 当前安装包为个人自用构建，未做商业代码签名。Windows 可能显示未知发布者。
 - 安装包由 Inno Setup 生成，覆盖安装不会删除 Engine 数据目录。
+- 更新检查已有代码路径，但尚无已签名的 Release 清单和签名公钥，正式发布前
+  需要完成签名配置。
+- 本机互传已通过启动、监听和停止测试；跨设备发送与接收仍需在允许 Windows
+  防火墙后做一次真机回归。
 
 ## 8. 回退
 
