@@ -25,9 +25,7 @@ public sealed partial class DesktopWidgetWindow : Window
         WidgetDragRegion.PointerPressed += OnTitleBarPointerPressed;
     }
 
-    public event EventHandler? OpenMainRequested;
     public event EventHandler? OpenMonthRequested;
-    public event EventHandler? OpenTransferRequested;
     public event EventHandler? OpenSettingsRequested;
 
     public async Task ShowDesktopWidgetAsync()
@@ -154,14 +152,8 @@ public sealed partial class DesktopWidgetWindow : Window
         }
     }
 
-    private void OnOpenMainClicked(object? sender, RoutedEventArgs e)
-        => OpenMainRequested?.Invoke(this, EventArgs.Empty);
-
     private void OnOpenMonthClicked(object? sender, RoutedEventArgs e)
         => OpenMonthRequested?.Invoke(this, EventArgs.Empty);
-
-    private void OnOpenTransferClicked(object? sender, RoutedEventArgs e)
-        => OpenTransferRequested?.Invoke(this, EventArgs.Empty);
 
     private void OnOpenSettingsClicked(object? sender, RoutedEventArgs e)
         => OpenSettingsRequested?.Invoke(this, EventArgs.Empty);

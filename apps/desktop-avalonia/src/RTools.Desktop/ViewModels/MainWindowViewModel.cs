@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Avalonia.Media;
 using RTools.Desktop.Models;
 using RTools.Desktop.Services;
 using System.Collections.ObjectModel;
@@ -65,8 +66,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
     public bool IsHighPrioritySelected => NewTaskPriority == TaskPriority.High;
     public bool IsMediumPrioritySelected => NewTaskPriority == TaskPriority.Medium;
     public bool IsLowPrioritySelected => NewTaskPriority == TaskPriority.Low;
+    public IBrush HighPriorityDotBrush => IsHighPrioritySelected
+        ? HighPriorityColor
+        : Brushes.Transparent;
+    public IBrush MediumPriorityDotBrush => IsMediumPrioritySelected
+        ? MediumPriorityColor
+        : Brushes.Transparent;
+    public IBrush LowPriorityDotBrush => IsLowPrioritySelected
+        ? LowPriorityColor
+        : Brushes.Transparent;
+    public IBrush HighPriorityColor { get; } = Brush.Parse("#FFE05A5A");
+    public IBrush MediumPriorityColor { get; } = Brush.Parse("#FFE8A838");
+    public IBrush LowPriorityColor { get; } = Brush.Parse("#FFA6A6AD");
 
     public string Title => $"rtools ({ActiveCount}/{VisibleCount})";
+    public string WidgetTitle => $"待办事项 ({ActiveCount}/{VisibleCount})";
 
     partial void OnIsSettingsOpenChanged(bool value)
         => OnPropertyChanged(nameof(IsTasksPage));
@@ -82,6 +96,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         OnPropertyChanged(nameof(IsHighPrioritySelected));
         OnPropertyChanged(nameof(IsMediumPrioritySelected));
         OnPropertyChanged(nameof(IsLowPrioritySelected));
+        OnPropertyChanged(nameof(HighPriorityDotBrush));
+        OnPropertyChanged(nameof(MediumPriorityDotBrush));
+        OnPropertyChanged(nameof(LowPriorityDotBrush));
     }
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
@@ -517,6 +534,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IAsyncDispos
         OnPropertyChanged(nameof(VisibleCount));
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(Title));
+        OnPropertyChanged(nameof(WidgetTitle));
     }
 
     private static bool IsCompletedBeforeToday(TaskItem task)

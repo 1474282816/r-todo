@@ -347,17 +347,10 @@ public partial class MainWindow : Window
             {
                 DataContext = viewModel
             };
-        widget.OpenMainRequested += (_, _) => ExitWidgetMode();
             widget.OpenMonthRequested += async (_, _) =>
             {
                 await viewModel.OpenMonthCommand.ExecuteAsync(null);
                 MainNavigation.SelectedItem = MonthNavigationItem;
-            ExitWidgetMode();
-            };
-            widget.OpenTransferRequested += async (_, _) =>
-            {
-                await viewModel.OpenTransferCommand.ExecuteAsync(null);
-                MainNavigation.SelectedItem = TransferNavigationItem;
             ExitWidgetMode();
             };
             widget.OpenSettingsRequested += async (_, _) =>
