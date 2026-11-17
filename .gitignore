@@ -85,3 +85,9 @@ apps/desktop/src-tauri/.cargo/
 # ────── 并行开发 worktree ──────
 /.worktrees/
 
+
+# ────── RTools release installers ──────
+/RTools_*.exe
+/apps/desktop-tauri/src-tauri/target/
+/apps/desktop-tauri/dist/
+/apps/desktop-tauri/node_modules/
