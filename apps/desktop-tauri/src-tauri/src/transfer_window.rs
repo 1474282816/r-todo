@@ -11,7 +11,7 @@ pub async fn open_transfer_window(app: tauri::AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(
+    let window = WebviewWindowBuilder::new(
         &app,
         LABEL,
         WebviewUrl::App("index.html?view=transfer".into()),
@@ -22,10 +22,22 @@ pub async fn open_transfer_window(app: tauri::AppHandle) -> Result<(), String> {
     .center()
     .resizable(true)
     .decorations(true)
-    .transparent(false)
+    .transparent(true)
     .visible(true)
     .build()
     .map_err(|error| format!("创建互传窗口失败: {error}"))?;
+
+    #[cfg(target_os = "windows")]
+    {
+        crate::rounded::apply_rounded_corners(&window);
+        if let Ok(raw) = window.hwnd() {
+            let hwnd = windows::Win32::Foundation::HWND(raw.0 as *mut _);
+            let _ = crate::window_effect::apply(
+                hwnd,
+                crate::window_effect::Backdrop::Acrylic,
+            );
+        }
+    }
     Ok(())
 }
 

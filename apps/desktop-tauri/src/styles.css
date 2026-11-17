@@ -27,58 +27,71 @@ body {
 }
 
 /*
- * 主窗口（透明无边框挂件）：半透明背景 + CSS 圆角
- * 圆角靠 border-radius + overflow: hidden 保证内容不溢出
+ * DWM 提供真实材质，WebView 只叠一层很薄的对比度 tint。
+ * 背景必须保持透明，否则会遮住系统合成结果。
  */
 body[data-view="main"] #root {
-  background: rgb(var(--win-rgb-light) / var(--win-alpha));
   border-radius: 12px;
+  background: rgb(var(--win-rgb-light) / calc(0.08 * var(--win-alpha)));
 }
 @media (prefers-color-scheme: dark) {
   body[data-view="main"] #root {
-    background: rgb(var(--win-rgb-dark) / var(--win-alpha));
+    background: rgb(var(--win-rgb-dark) / calc(0.18 * var(--win-alpha)));
   }
 }
 
-/*
- * 材质档位（body[data-backdrop] 由 system.ts 设置）：
- *
- * translucent（半透明）：纯 CSS，不读壁纸、不跑 Rust 模糊，零开销，
- *   任何机器任何壁纸都一定生效。透明度走同一个 --win-alpha 滑杆。
- *
- * mica / mica_alt / acrylic（实时模糊）：--wp-mica 是 Rust 端壁纸高斯模糊
- *   图的 data URI（模拟 Mica，换壁纸经 WM_SETTINGCHANGE 事件实时刷新）。
- *   只叠一层薄底色保证文字对比度；DWM SystemBackdrop 因失焦黑屏（上游 bug）不用。
- */
-body[data-view="main"][data-backdrop] #root {
-  background:
-    linear-gradient(rgb(var(--win-rgb-light) / 0.3), rgb(var(--win-rgb-light) / 0.3)),
-    var(--wp-mica, none) center / cover no-repeat;
-}
-@media (prefers-color-scheme: dark) {
-  body[data-view="main"][data-backdrop] #root {
-    background:
-      linear-gradient(rgb(var(--win-rgb-dark) / 0.38), rgb(var(--win-rgb-dark) / 0.38)),
-      var(--wp-mica, none) center / cover no-repeat;
-  }
-}
-
-/* 半透明档：单图层，透明度完全由滑杆控制，不叠模糊图 */
 body[data-view="main"][data-backdrop="translucent"] #root {
-  background: rgb(var(--win-rgb-light) / var(--win-alpha));
+  background: rgb(var(--win-rgb-light) / calc(0.05 * var(--win-alpha)));
 }
 @media (prefers-color-scheme: dark) {
   body[data-view="main"][data-backdrop="translucent"] #root {
-    background: rgb(var(--win-rgb-dark) / var(--win-alpha));
+    background: rgb(var(--win-rgb-dark) / calc(0.12 * var(--win-alpha)));
   }
 }
 
-/*
- * 其他窗口（月视图等，有系统边框）：不透明背景 + 无圆角
- * 避免圆角尖露白
- */
+body[data-view="main"][data-backdrop="mica"] #root {
+  background: rgb(var(--win-rgb-light) / calc(0.11 * var(--win-alpha)));
+}
+@media (prefers-color-scheme: dark) {
+  body[data-view="main"][data-backdrop="mica"] #root {
+    background: rgb(var(--win-rgb-dark) / calc(0.2 * var(--win-alpha)));
+  }
+}
+
+body[data-view="main"][data-backdrop="mica_alt"] #root {
+  background: rgb(var(--win-rgb-light) / calc(0.14 * var(--win-alpha)));
+}
+@media (prefers-color-scheme: dark) {
+  body[data-view="main"][data-backdrop="mica_alt"] #root {
+    background: rgb(var(--win-rgb-dark) / calc(0.24 * var(--win-alpha)));
+  }
+}
+
+body[data-view="main"][data-backdrop="acrylic"] #root {
+  background: rgb(var(--win-rgb-light) / calc(0.08 * var(--win-alpha)));
+}
+@media (prefers-color-scheme: dark) {
+  body[data-view="main"][data-backdrop="acrylic"] #root {
+    background: rgb(var(--win-rgb-dark) / calc(0.16 * var(--win-alpha)));
+  }
+}
+
+body[data-view="main"][data-backdrop="none"] #root {
+  background: rgb(var(--win-rgb-light));
+}
+@media (prefers-color-scheme: dark) {
+  body[data-view="main"][data-backdrop="none"] #root {
+    background: rgb(var(--win-rgb-dark));
+  }
+}
+
 body:not([data-view="main"]) #root {
-  background: transparent;
+  background: rgb(var(--win-rgb-light) / calc(0.08 * var(--win-alpha)));
+}
+@media (prefers-color-scheme: dark) {
+  body:not([data-view="main"]) #root {
+    background: rgb(var(--win-rgb-dark) / calc(0.18 * var(--win-alpha)));
+  }
 }
 
 body {

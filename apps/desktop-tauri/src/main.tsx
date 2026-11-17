@@ -5,6 +5,7 @@ import App from "./App";
 import { TransferWindow } from "./features/transfer/TransferWindow";
 import { MonthWindow } from "./windows/MonthWindow";
 import "./styles.css";
+import { restoreBackdrop } from "./lib/system";
 
 /**
  * 路由分发：根据 URL query 参数决定渲染哪个窗口。
@@ -19,6 +20,7 @@ const view = params.get("view");
 
 // 让 CSS 能根据视图区分样式（主窗口圆角 + 半透明；月视图/互传无圆角）
 document.body.dataset.view = view ?? "main";
+void restoreBackdrop();
 
 let Root: React.ComponentType;
 if (view === "month") {

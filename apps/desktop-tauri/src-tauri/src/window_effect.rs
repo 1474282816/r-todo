@@ -2,22 +2,20 @@
 //!
 //! 直接调 `DwmSetWindowAttribute(DWMWA_SYSTEMBACKDROP_TYPE)`，四档：
 //!   DWMSBT_NONE(1)          无材质
-//!   DWMSBT_MAINWINDOW(2)    Mica（跟随系统深浅色，壁纸取色，静态）
+//!   DWMSBT_MAINWINDOW(2)    Mica（跟随系统深浅色和壁纸取色）
 //!   DWMSBT_TRANSIENTWINDOW(3) Acrylic（实时毛玻璃，浮窗级）
 //!   DWMSBT_TABBEDWINDOW(4)  Mica Alt（更强壁纸取色，层级底色）
+//!
+//! Mica 的语义本来就是壁纸取色，不会透出窗口背后的应用内容；需要随窗口
+//! 背后内容实时变化时应使用 Acrylic。RTools 默认材质映射到 Acrylic。
 //!
 //! 不走 tauri 内置 set_effects：它的 Acrylic 用的是 Win10 时代的
 //! SetWindowCompositionAttribute(ACCENT_ENABLE_ACRYLICBLURBEHIND)，
 //! Win11 上拖动窗口有明显卡顿；SystemBackdrop 是 Win11 官方实现，无此问题。
 //!
 //! 前提：窗口 `transparent: true`（tauri.conf.json 已配置），且 WebView
-//! 的 HTML 背景是透明的（styles.css 里 html/body 已 transparent）。
-//! 前端在启用材质时要给 body 加 `data-backdrop`，把 #root 的 rgba 背景
-//! 调低透明度，否则材质会被 CSS 背景盖住看不见。
-//!
-//! SystemBackdrop 官方语义只保证顶层窗口生效；窗口挂到 Progman（桌面嵌入）
-//! 成为子窗口后材质可能不生效——调用仍会成功返回，所以允许"嵌入+材质"
-//! 同时设置，若实测无效由用户在设置里二选一。
+//! 的 HTML 背景是透明的（styles.css 里 html/body 已 transparent）。前端只
+//! 叠加一层很薄的 tint 保证文字对比度，不能盖住系统合成结果。
 
 #![cfg(target_os = "windows")]
 

@@ -35,7 +35,6 @@ import {
   restoreBackdrop,
   setWindowBackdrop,
   setWindowOpacity,
-  watchWallpaperChanges,
 } from "./lib/system";
 import type { Task } from "./lib/types";
 import { silentCheckUpdate, subscribeUpdateStatus } from "./lib/updater";
@@ -95,7 +94,6 @@ export default function App() {
   // 启动时恢复窗口材质偏好（默认 acrylic 毛玻璃）+ 监听壁纸变化实时刷新
   useEffect(() => {
     restoreBackdrop().catch((e) => console.warn("restore backdrop failed:", e));
-    watchWallpaperChanges().catch(() => {});
     void (async () => {
       const material = await getSettingSafe("material");
       if (material) {

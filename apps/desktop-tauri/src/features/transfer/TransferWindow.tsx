@@ -96,7 +96,7 @@ function LegacyTransferView() {
   };
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-[#f5f5f7] text-neutral-800 select-none dark:bg-neutral-900 dark:text-neutral-100">
+    <div className="relative flex h-full flex-col overflow-hidden bg-[#f5f5f7]/40 text-neutral-800 select-none dark:bg-neutral-900/40 dark:text-neutral-100">
       {/* 顶部 */}
       <div className="flex h-11 shrink-0 items-center justify-between border-b border-black/5 px-3 dark:border-white/5">
         <div className="flex min-w-0 items-center gap-2">

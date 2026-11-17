@@ -5,7 +5,6 @@ mod rounded;
 mod snap;
 mod system;
 mod transfer_window;
-mod wallpaper_mica;
 mod window_effect;
 
 use tauri::{
@@ -58,7 +57,15 @@ pub fn run() {
                 .ok_or("主窗口不存在")?;
 
             #[cfg(target_os = "windows")]
-            rounded::apply_rounded_corners(&window);
+            {
+                rounded::apply_rounded_corners(&window);
+                if let Ok(raw) = window.hwnd() {
+                    let hwnd =
+                        windows::Win32::Foundation::HWND(raw.0 as *mut _);
+                    let _ =
+                        window_effect::apply(hwnd, window_effect::Backdrop::Acrylic);
+                }
+            }
 
             if let Ok(position) = window.outer_position() {
                 if position.x < -10_000 || position.y < -10_000 {
@@ -143,8 +150,6 @@ pub fn run() {
             desktop_embed::unembed_from_desktop,
             #[cfg(target_os = "windows")]
             window_effect::set_window_backdrop,
-            #[cfg(target_os = "windows")]
-            wallpaper_mica::get_wallpaper_mica,
             snap::get_snap_target,
             snap::get_collapse_target,
             month_window::open_month_window,

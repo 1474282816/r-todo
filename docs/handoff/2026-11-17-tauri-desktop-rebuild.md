@@ -24,7 +24,7 @@ E:\artifacts\release-final-tauri\RTools_0.3.0_x64-setup.exe
 当前自用构建安装包 SHA-256：
 
 ```text
-76060203FF156511F1818E8B6A7CA59B043464D1F598EA3B1B8A3966648CCF7D
+BFD450C644EDD0F7B74307E8F41231B0F2C68D63390CE767A69140B22DC580BE
 ```
 
 ## 2. 架构
@@ -109,6 +109,16 @@ Flutter analyze：No issues found
 
 Windows Hyper-V/WSL 将 `53317` 和 `53318` 纳入 TCP 保留段。RTools 默认互传
 端口改为 `54417`。发现协议携带实际端口，因此桌面和手机无需依赖固定端口。
+
+## 6.1 窗口材质
+
+主窗口、月视图和互传窗口均使用 Windows 11 DWM `SystemBackdrop`：
+
+- “实时透明”和“亚克力”使用 `DWMSBT_TRANSIENTWINDOW`，会实时反映窗口背后的
+  内容和壁纸。
+- Mica 和 Mica Alt 使用微软原生壁纸取色语义，不反映窗口背后的应用内容。
+- 已移除旧版“读取壁纸、高斯模糊、转成 PNG data URI”的静态模拟路径。
+- WebView 只叠加一层与透明度滑杆联动的轻量 tint，背景保持透明。
 
 ## 7. 已知限制
 

@@ -96,7 +96,7 @@ export function MonthWindow() {
   }, [selectedKey]);
 
   return (
-    <div className="flex h-screen flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="flex h-screen flex-col bg-white/45 text-neutral-900 dark:bg-neutral-950/45 dark:text-neutral-100">
       {/* 顶栏 */}
       <header className="flex shrink-0 items-center justify-between border-b border-black/10 px-4 py-2 dark:border-white/10">
         <div className="flex items-center gap-2">
@@ -168,8 +168,8 @@ export function MonthWindow() {
               className={cn(
                 "flex min-h-0 flex-col overflow-hidden p-1.5 text-left transition-colors",
                 inMonth
-                  ? "bg-white dark:bg-neutral-950"
-                  : "bg-neutral-50 dark:bg-neutral-900",
+                  ? "bg-white/35 dark:bg-neutral-950/35"
+                  : "bg-neutral-50/25 dark:bg-neutral-900/25",
                 items.length > 0 &&
                   "hover:bg-neutral-100 dark:hover:bg-neutral-900",
                 items.length === 0 && "cursor-default",
