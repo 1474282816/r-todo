@@ -17,6 +17,7 @@ public sealed partial class DesktopWidgetWindow : Window
     private TaskItem? _dragTask;
     private Point _dragStartPoint;
     private bool _draggingTask;
+    private int _dragSourceIndex;
 
     public DesktopWidgetWindow()
     {
@@ -182,6 +183,7 @@ public sealed partial class DesktopWidgetWindow : Window
             return;
         }
         _dragTask = task;
+        _dragSourceIndex = viewModel.ActiveTasks.IndexOf(task);
         _dragStartPoint = e.GetPosition(WidgetTaskList);
         _draggingTask = false;
         e.Pointer.Capture(border);
@@ -220,13 +222,21 @@ public sealed partial class DesktopWidgetWindow : Window
         {
             return;
         }
-        var y = e.GetPosition(WidgetTaskList).Y + WidgetTaskList.Bounds.Y;
+        var y = e.GetPosition(WidgetTaskList).Y;
         var rowHeight = 36.0;
         var targetIndex = Math.Clamp(
             (int)Math.Round(y / rowHeight),
             0,
             viewModel.ActiveTasks.Count - 1);
-        await viewModel.ReorderTaskToIndexAsync(task, targetIndex);
+        if (targetIndex == _dragSourceIndex)
+        {
+            return;
+        }
+        // 目标索引是插入位置；向下拖动时移除源行后索引要回退一位。
+        var finalIndex = targetIndex > _dragSourceIndex
+            ? targetIndex - 1
+            : targetIndex;
+        await viewModel.ReorderTaskToIndexAsync(task, finalIndex);
     }
 
     private void OnTaskRowPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
