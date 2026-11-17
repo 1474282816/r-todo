@@ -14,12 +14,7 @@ public static class TrayIconService
             return;
         }
         var show = new NativeMenuItem("显示主窗口");
-        show.Click += (_, _) =>
-        {
-            window.Show();
-            window.WindowState = WindowState.Normal;
-            window.Activate();
-        };
+        show.Click += (_, _) => ShowMainWindow(window);
         var hide = new NativeMenuItem("隐藏窗口");
         hide.Click += (_, _) => window.Hide();
         var transfer = new NativeMenuItem("打开互传");
@@ -55,11 +50,21 @@ public static class TrayIconService
             Icon = LoadIcon(),
             IsVisible = true
         };
-        _tray.Clicked += (_, _) =>
+        _tray.Clicked += (_, _) => ShowMainWindow(window);
+    }
+
+    private static void ShowMainWindow(Window window)
+    {
+        if (window is MainWindow mainWindow)
+        {
+            mainWindow.ShowFromTray();
+        }
+        else
         {
             window.Show();
+            window.WindowState = WindowState.Normal;
             window.Activate();
-        };
+        }
     }
 
     private static WindowIcon LoadIcon()

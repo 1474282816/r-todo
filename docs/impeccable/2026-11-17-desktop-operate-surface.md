@@ -2,6 +2,8 @@
 
 Scope: Windows desktop application, full daily workspace including tasks,
 calendar review, transfer, synchronization, MCP, and settings.
+The same product also has a separate compact desktop-widget surface that stays
+on the desktop for glanceable task access and quick capture.
 
 Mode: Operate. The interface exists to help one person capture, scan, complete,
 and maintain tasks with minimal interruption.

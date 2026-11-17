@@ -1,0 +1,348 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RTools.Desktop.ViewModels"
+        xmlns:models="using:RTools.Desktop.Models"
+        x:Class="RTools.Desktop.DesktopWidgetWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Width="380"
+        Height="620"
+        MinWidth="320"
+        MinHeight="480"
+        WindowDecorations="None"
+        ExtendClientAreaToDecorationsHint="True"
+        ShowInTaskbar="False"
+        CanResize="True"
+        TransparencyLevelHint="AcrylicBlur,Transparent"
+        Background="Transparent"
+        Title="rtools 桌面挂件">
+    <Window.Icon>
+        <WindowIcon>avares://RTools.Desktop/Assets/rtools.ico</WindowIcon>
+    </Window.Icon>
+
+    <Grid Background="Transparent">
+        <Border CornerRadius="14"
+                Background="{DynamicResource RtSurfaceStrongBrush}"
+                BorderBrush="{DynamicResource RtStrokeBrush}"
+                BorderThickness="1"
+                BoxShadow="0 10 32 0 #55000000">
+            <Grid RowDefinitions="38,Auto,*,30">
+                <Grid Grid.Row="0"
+                      Margin="8,0,6,0"
+                      ColumnDefinitions="*,Auto"
+                      PointerPressed="OnTitleBarPointerPressed">
+                    <StackPanel Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                Spacing="7">
+                        <TextBlock FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Text="待办事项" />
+                        <TextBlock Classes="muted"
+                                   Text="{Binding ActiveCount, StringFormat='{}{0}'}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="0">
+                        <Button Classes="icon"
+                                Click="OnOpenMainClicked"
+                                ToolTip.Tip="打开完整界面">
+                            <PathIcon Width="14"
+                                      Height="14"
+                                      Data="M5,5H10V3H3V10H5V5M19,19H14V21H21V14H19V19M3,14H5V19H10V21H3V14M21,10H19V5H14V3H21V10Z" />
+                        </Button>
+                        <Button Classes="icon"
+                                Click="OnOpenMonthClicked"
+                                ToolTip.Tip="月视图">
+                            <PathIcon Width="14"
+                                      Height="14"
+                                      Data="M19,3H18V1H16V3H8V1H6V3H5C3.89,3 3,3.9 3,5V19C3,20.1 3.89,21 5,21H19C20.1,21 21,20.1 21,19V5C21,3.9 20.1,3 19,3M19,19H5V8H19V19Z" />
+                        </Button>
+                        <Button Classes="icon"
+                                Click="OnOpenTransferClicked"
+                                ToolTip.Tip="局域网互传">
+                            <PathIcon Width="14"
+                                      Height="14"
+                                      Data="M2,21L23,12L2,3V10L17,12L2,14V21Z" />
+                        </Button>
+                        <Button Classes="icon"
+                                Click="OnOpenSettingsClicked"
+                                ToolTip.Tip="设置">
+                            <PathIcon Width="14"
+                                      Height="14"
+                                      Data="M19.14,12.94C19.18,12.64 19.2,12.33 19.2,12C19.2,11.68 19.18,11.36 19.13,11.06L21.16,9.48C21.34,9.34 21.39,9.07 21.28,8.86L19.36,5.54C19.25,5.32 18.99,5.24 18.76,5.32L14.89,6.88C14.35,6.47 13.74,6.14 13.08,5.91L12.5,2.8C12.47,2.56 12.26,2.38 12,2.38H8.16C7.9,2.38 7.69,2.56 7.66,2.8L7.08,5.91C6.42,6.14 5.81,6.47 5.27,6.88L1.4,5.32C1.17,5.24 0.91,5.32 0.8,5.54L-1.12,8.86C-1.23,9.08 -1.18,9.36 -1,9.48L1.03,11.06C0.98,11.36 0.96,11.68 0.96,12C0.96,12.32 0.98,12.64 1.03,12.94L-1,14.52C-1.18,14.66 -1.23,14.93 -1.12,15.14L0.8,18.46C0.91,18.68 1.17,18.76 1.4,18.68L5.27,17.12C5.81,17.53 6.42,17.86 7.08,18.09L7.66,21.2C7.69,21.44 7.9,21.62 8.16,21.62H12C12.26,21.62 12.47,21.44 12.5,21.2L13.08,18.09C13.74,17.86 14.35,17.53 14.89,17.12L18.76,18.68C18.99,18.76 19.25,18.68 19.36,18.46L21.28,15.14C21.39,14.92 21.34,14.65 21.16,14.52L19.14,12.94M12,16C9.79,16 8,14.21 8,12S9.79,8 12,8S16,9.79 16,12S14.21,16 12,16Z" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <Border Grid.Row="1"
+                        Margin="10,2,10,8"
+                        Padding="9,6"
+                        CornerRadius="8"
+                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                        BorderBrush="{DynamicResource RtStrokeBrush}"
+                        BorderThickness="1">
+                    <Grid RowDefinitions="Auto,Auto">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBox MinHeight="32"
+                                     Padding="8,4"
+                                     PlaceholderText="添加任务，按 Enter 创建..."
+                                     Text="{Binding NewTaskTitle, Mode=TwoWay}"
+                                     KeyDown="OnQuickAddKeyDown" />
+                            <Button Grid.Column="1"
+                                    Width="34"
+                                    MinWidth="34"
+                                    MinHeight="32"
+                                    Margin="6,0,0,0"
+                                    Classes="primary"
+                                    Command="{Binding AddTaskCommand}"
+                                    ToolTip.Tip="添加任务">
+                                <PathIcon Width="14"
+                                          Height="14"
+                                          Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                          Data="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+                            </Button>
+                        </Grid>
+                        <StackPanel Grid.Row="1"
+                                    Margin="0,6,0,0"
+                                    Orientation="Horizontal"
+                                    Spacing="5">
+                            <TextBlock VerticalAlignment="Center"
+                                       Margin="0,0,3,0"
+                                       Classes="muted"
+                                       Text="优先级" />
+                            <Button Classes="priority"
+                                    Classes.selected="{Binding IsHighPrioritySelected}"
+                                    Command="{Binding SetHighPriorityCommand}"
+                                    Content="高" />
+                            <Button Classes="priority"
+                                    Classes.selected="{Binding IsMediumPrioritySelected}"
+                                    Command="{Binding SetMediumPriorityCommand}"
+                                    Content="中" />
+                            <Button Classes="priority"
+                                    Classes.selected="{Binding IsLowPrioritySelected}"
+                                    Command="{Binding SetLowPriorityCommand}"
+                                    Content="低" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <ScrollViewer Grid.Row="2"
+                              Padding="5,0,5,5">
+                    <StackPanel>
+                        <ItemsControl ItemsSource="{Binding ActiveTasks}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:TaskItem">
+                                    <Border Classes="taskRow">
+                                        <Grid ColumnDefinitions="Auto,7,*,Auto">
+                                            <Button Classes="taskCheckIcon"
+                                                    Command="{Binding $parent[Window].DataContext.ToggleCompleteCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="完成任务">
+                                                <Grid Width="18" Height="18">
+                                                    <Border Width="18"
+                                                            Height="18"
+                                                            CornerRadius="9"
+                                                            BorderBrush="{DynamicResource RtCheckboxBrush}"
+                                                            BorderThickness="1" />
+                                                    <PathIcon Width="11"
+                                                              Height="11"
+                                                              IsVisible="{Binding IsCompleted}"
+                                                              Foreground="{DynamicResource RtSuccessBrush}"
+                                                              Data="M9,16.17L4.83,12L3.41,13.41L9,19L21,7L19.59,5.59L9,16.17Z" />
+                                                </Grid>
+                                            </Button>
+                                            <Border Grid.Column="1"
+                                                    Width="7"
+                                                    Height="7"
+                                                    CornerRadius="4"
+                                                    VerticalAlignment="Center"
+                                                    Background="{DynamicResource RtDangerBrush}"
+                                                    IsVisible="{Binding IsHighPriority}" />
+                                            <Border Grid.Column="1"
+                                                    Width="7"
+                                                    Height="7"
+                                                    CornerRadius="4"
+                                                    VerticalAlignment="Center"
+                                                    Background="{DynamicResource RtWarningBrush}"
+                                                    IsVisible="{Binding IsMediumPriority}" />
+                                            <Border Grid.Column="1"
+                                                    Width="7"
+                                                    Height="7"
+                                                    CornerRadius="4"
+                                                    VerticalAlignment="Center"
+                                                    Background="{DynamicResource RtTextTertiaryBrush}"
+                                                    IsVisible="{Binding IsLowPriority}" />
+                                            <Button Grid.Column="2"
+                                                    Margin="7,0,0,0"
+                                                    Padding="0"
+                                                    HorizontalContentAlignment="Left"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Command="{Binding $parent[Window].DataContext.EditTaskCommand}"
+                                                    CommandParameter="{Binding}">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock FontSize="13"
+                                                               Text="{Binding Title}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <StackPanel Orientation="Horizontal"
+                                                                Spacing="4"
+                                                                IsVisible="{Binding ReminderLabel, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                        <PathIcon Width="9"
+                                                                  Height="9"
+                                                                  Foreground="{DynamicResource RtWarningBrush}"
+                                                                  Data="M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,7H13V13H11V7M11,15H13V17H11V15Z" />
+                                                        <TextBlock FontSize="9"
+                                                                   Foreground="{DynamicResource RtTextSecondaryBrush}"
+                                                                   Text="{Binding ReminderLabel}" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Button>
+                                            <StackPanel Grid.Column="3"
+                                                        Orientation="Horizontal">
+                                                <Button Classes="icon"
+                                                        Command="{Binding $parent[Window].DataContext.ReorderTaskCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip.Tip="上移">
+                                                    <PathIcon Width="11"
+                                                              Height="11"
+                                                              Data="M7,14L12,9L17,14H7Z" />
+                                                </Button>
+                                                <Button Classes="icon"
+                                                        Command="{Binding $parent[Window].DataContext.DeleteTaskCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip.Tip="删除">
+                                                    <PathIcon Width="11"
+                                                              Height="11"
+                                                              Data="M6,19C6,20.1 6.9,21 8,21H16C17.1,21 18,20.1 18,19V7H6V19M8,9H16V19H8V9M15.5,4L14.5,3H9.5L8.5,4H5V6H19V4H15.5Z" />
+                                                </Button>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <TextBlock Margin="10,12,0,4"
+                                   Classes="caption"
+                                   FontWeight="SemiBold"
+                                   Text="今日已完成"
+                                   IsVisible="{Binding CompletedTasks.Count}" />
+                        <ItemsControl ItemsSource="{Binding CompletedTasks}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:TaskItem">
+                                    <Border Classes="taskRow" Opacity="0.62">
+                                        <Grid ColumnDefinitions="Auto,*">
+                                            <Button Classes="taskCheckIcon"
+                                                    Command="{Binding $parent[Window].DataContext.ToggleCompleteCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="恢复任务">
+                                                <Grid Width="18" Height="18">
+                                                    <Border Width="18"
+                                                            Height="18"
+                                                            CornerRadius="9"
+                                                            BorderBrush="{DynamicResource RtSuccessBrush}"
+                                                            BorderThickness="1" />
+                                                    <PathIcon Width="11"
+                                                              Height="11"
+                                                              Foreground="{DynamicResource RtSuccessBrush}"
+                                                              Data="M9,16.17L4.83,12L3.41,13.41L9,19L21,7L19.59,5.59L9,16.17Z" />
+                                                </Grid>
+                                            </Button>
+                                            <TextBlock Grid.Column="1"
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding Title}"
+                                                       TextDecorations="Strikethrough"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <StackPanel Margin="0,40"
+                                    HorizontalAlignment="Center"
+                                    IsVisible="{Binding IsEmpty}"
+                                    Spacing="4">
+                            <TextBlock Classes="caption" Text="今天没有任务" />
+                            <TextBlock Classes="muted" Text="在上方快速添加一条" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <Grid Grid.Row="3"
+                      Margin="10,0,10,0"
+                      ColumnDefinitions="*,Auto">
+                    <TextBlock VerticalAlignment="Center"
+                               FontSize="9"
+                               Foreground="{DynamicResource RtSuccessBrush}"
+                               Text="{Binding EngineStatus}" />
+                    <TextBlock Grid.Column="1"
+                               VerticalAlignment="Center"
+                               FontSize="9"
+                               Foreground="{DynamicResource RtTextTertiaryBrush}"
+                               Text="{Binding SyncSummary}" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <Border Background="#66000000"
+                IsVisible="{Binding SelectedTask, Converter={x:Static ObjectConverters.IsNotNull}}"
+                ZIndex="2">
+            <Border Width="340"
+                    MaxHeight="560"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Padding="14"
+                    CornerRadius="12"
+                    Background="{DynamicResource RtSurfaceStrongBrush}"
+                    BoxShadow="0 10 30 0 #77000000">
+                <ScrollViewer>
+                    <StackPanel DataContext="{Binding SelectedTask}" Spacing="10">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="h2" Text="编辑任务" />
+                            <Button Grid.Column="1"
+                                    Classes="icon"
+                                    Command="{Binding $parent[Window].DataContext.CloseEditorCommand}"
+                                    ToolTip.Tip="关闭">
+                                <PathIcon Width="14"
+                                          Height="14"
+                                          Data="M18.3,5.71L16.89,4.29L12,9.17L7.11,4.29L5.7,5.71L10.59,10.6L5.7,15.49L7.11,16.9L12,12.01L16.89,16.9L18.3,15.49L13.41,10.6L14.4,9.6L18.3,5.71Z" />
+                            </Button>
+                        </Grid>
+                        <TextBlock Classes="caption" Text="标题" />
+                        <TextBox Text="{Binding Title}" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Classes="caption" Text="优先级" />
+                                <ComboBox SelectedIndex="{Binding $parent[Window].DataContext.SelectedTaskPriorityIndex, Mode=TwoWay}">
+                                    <ComboBoxItem Content="高" />
+                                    <ComboBoxItem Content="中" />
+                                    <ComboBoxItem Content="低" />
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="4">
+                                <TextBlock Classes="caption" Text="提前提醒" />
+                                <NumericUpDown Minimum="0"
+                                               Maximum="1440"
+                                               Value="{Binding RemindOffsetMinutes}" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock Classes="caption" Text="提醒时间" />
+                        <TextBox PlaceholderText="例如 2026-11-17 09:30"
+                                 Text="{Binding RemindAtText, Mode=TwoWay}" />
+                        <TextBlock Classes="caption" Text="重复规则 RRULE" />
+                        <TextBox Text="{Binding RepeatRule}" />
+                        <StackPanel Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Spacing="8">
+                            <Button Command="{Binding $parent[Window].DataContext.CloseEditorCommand}"
+                                    Content="取消" />
+                            <Button Classes="primary"
+                                    Click="OnSaveEditedTask"
+                                    Content="保存" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

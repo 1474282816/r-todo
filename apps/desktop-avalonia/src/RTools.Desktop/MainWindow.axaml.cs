@@ -13,7 +13,7 @@ namespace RTools.Desktop;
 
 public partial class MainWindow : Window
 {
-    private DesktopWidgetController? _widget;
+    private DesktopWidgetWindow? _desktopWidgetWindow;
     private bool _closing;
     private bool _snappedCollapsed;
     private PixelPoint? _expandedPosition;
@@ -33,7 +33,6 @@ public partial class MainWindow : Window
         }
         var engine = viewModel.Engine;
         viewModel.ReminderRaised += OnReminderRaised;
-        _widget = new DesktopWidgetController(this, engine);
         try
         {
             var x = await engine.GetSettingAsync("window_x");
@@ -53,7 +52,8 @@ public partial class MainWindow : Window
             var enabled = await engine.GetSettingAsync("desktop_widget") == "true";
             if (enabled)
             {
-                await _widget.SetEnabledAsync(true);
+                await EnableDesktopWidgetAsync(viewModel);
+                Hide();
             }
         }
         catch (Exception ex)
@@ -130,7 +130,9 @@ public partial class MainWindow : Window
     public void ExitApplication()
     {
         _closing = true;
-        _widget?.Dispose();
+        _desktopWidgetWindow?.AllowClose();
+        _desktopWidgetWindow?.Close();
+        _desktopWidgetWindow = null;
         Close();
     }
 
@@ -303,22 +305,106 @@ public partial class MainWindow : Window
 
     private async void OnDesktopWidgetChanged(object? sender, RoutedEventArgs e)
     {
-        if (_widget is null ||
-            sender is not CheckBox checkBox ||
+        if (sender is not CheckBox checkBox ||
             DataContext is not MainWindowViewModel viewModel)
         {
             return;
         }
         try
         {
-            await _widget.SetEnabledAsync(checkBox.IsChecked == true);
+            if (checkBox.IsChecked == true)
+            {
+                await EnableDesktopWidgetAsync(viewModel);
+                Hide();
+            }
+            else
+            {
+                DisableDesktopWidget();
+                ShowFullWindow();
+            }
             await viewModel.Settings.SetDesktopWidgetAsync(checkBox.IsChecked == true);
         }
         catch (Exception ex)
         {
-            checkBox.IsChecked = _widget.IsEnabled;
+            checkBox.IsChecked = _desktopWidgetWindow is not null;
             viewModel.ErrorMessage = ex.Message;
         }
+    }
+
+    private async Task EnableDesktopWidgetAsync(MainWindowViewModel viewModel)
+    {
+        try
+        {
+            viewModel.SyncSummary = "挂件启动中";
+            if (_desktopWidgetWindow is not null)
+            {
+                await _desktopWidgetWindow.ShowDesktopWidgetAsync();
+                viewModel.SyncSummary = "挂件已启动";
+                return;
+            }
+
+            var widget = new DesktopWidgetWindow(viewModel.Engine)
+            {
+                DataContext = viewModel
+            };
+        widget.OpenMainRequested += (_, _) => ExitWidgetMode();
+            widget.OpenMonthRequested += async (_, _) =>
+            {
+                await viewModel.OpenMonthCommand.ExecuteAsync(null);
+                MainNavigation.SelectedItem = MonthNavigationItem;
+            ExitWidgetMode();
+            };
+            widget.OpenTransferRequested += async (_, _) =>
+            {
+                await viewModel.OpenTransferCommand.ExecuteAsync(null);
+                MainNavigation.SelectedItem = TransferNavigationItem;
+            ExitWidgetMode();
+            };
+            widget.OpenSettingsRequested += async (_, _) =>
+            {
+                await viewModel.OpenSettingsCommand.ExecuteAsync(null);
+                MainNavigation.SelectedItem = SettingsNavigationItem;
+            ExitWidgetMode();
+            };
+            _desktopWidgetWindow = widget;
+            await widget.ShowDesktopWidgetAsync();
+            viewModel.SyncSummary = "挂件已启动";
+        }
+        catch (Exception ex)
+        {
+            viewModel.SyncSummary = $"挂件启动失败：{ex.Message}";
+            throw;
+        }
+    }
+
+    private void DisableDesktopWidget()
+    {
+        _desktopWidgetWindow?.CloseForModeChange();
+        _desktopWidgetWindow = null;
+    }
+
+    private void ShowFullWindow()
+    {
+        Show();
+        WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    private void ExitWidgetMode()
+    {
+        DisableDesktopWidget();
+        ShowFullWindow();
+        if (DataContext is MainWindowViewModel viewModel)
+        {
+            _ = viewModel.Engine.SetSettingAsync("desktop_widget", "false");
+            _ = viewModel.Settings.LoadAsync();
+        }
+    }
+
+    public void ShowFromTray()
+    {
+        // 从托盘打开完整应用时退出桌面挂件模式，避免两个形态同时抢占桌面。
+        ExitWidgetMode();
     }
 
     private async void OnExportJson(object? sender, RoutedEventArgs e)
