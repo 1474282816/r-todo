@@ -11,7 +11,6 @@ namespace RTools.Desktop;
 public sealed partial class DesktopWidgetWindow : Window
 {
     private IEngineClient? _engine;
-    private DesktopWidgetController? _controller;
     private bool _allowClose;
 
     public DesktopWidgetWindow()
@@ -21,7 +20,10 @@ public sealed partial class DesktopWidgetWindow : Window
     }
 
     public DesktopWidgetWindow(IEngineClient engine) : this()
-        => _engine = engine;
+    {
+        _engine = engine;
+        WidgetDragRegion.PointerPressed += OnTitleBarPointerPressed;
+    }
 
     public event EventHandler? OpenMainRequested;
     public event EventHandler? OpenMonthRequested;
@@ -34,26 +36,27 @@ public sealed partial class DesktopWidgetWindow : Window
         await RestoreGeometryAsync();
         TransparencyLevelHint =
             [WindowTransparencyLevel.AcrylicBlur, WindowTransparencyLevel.Blur];
-        var engine = _engine
-            ?? throw new InvalidOperationException("Engine 尚未初始化");
-        _controller ??= new DesktopWidgetController(this, engine);
-        if (!_controller.IsEnabled)
-        {
-            await _controller.SetEnabledAsync(true);
-        }
     }
 
     public void CloseForModeChange()
     {
         _allowClose = true;
-        _controller?.Dispose();
-        _controller = null;
         Close();
     }
 
     public void AllowClose()
     {
         _allowClose = true;
+    }
+
+    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            BeginMoveDrag(e);
+            _ = PersistAfterDragAsync();
+            e.Handled = true;
+        }
     }
 
     private async Task RestoreGeometryAsync()
@@ -70,8 +73,8 @@ public sealed partial class DesktopWidgetWindow : Window
             int.TryParse(height, out var ph))
         {
             Position = new PixelPoint(px, py);
-            Width = Math.Max(MinWidth, pw);
-            Height = Math.Max(MinHeight, ph);
+            Width = Math.Max(MinWidth, pw / RenderScaling);
+            Height = Math.Max(MinHeight, ph / RenderScaling);
             return;
         }
 
@@ -101,25 +104,46 @@ public sealed partial class DesktopWidgetWindow : Window
 
     protected override async void OnClosed(EventArgs e)
     {
-        _controller?.Dispose();
-        _controller = null;
         if (_engine is not null)
         {
-            await _engine.SetSettingAsync("widget_x", Position.X.ToString());
-            await _engine.SetSettingAsync("widget_y", Position.Y.ToString());
-            await _engine.SetSettingAsync("widget_width", ((int)Bounds.Width).ToString());
-            await _engine.SetSettingAsync("widget_height", ((int)Bounds.Height).ToString());
+            await SaveGeometryAsync();
         }
         base.OnClosed(e);
     }
 
-    private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
+    private async Task SaveGeometryAsync()
     {
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        if (_engine is null)
         {
-            BeginMoveDrag(e);
+            return;
         }
+        var hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+        if (hwnd != IntPtr.Zero && Win32Native.GetWindowRect(hwnd, out var rect))
+        {
+            await _engine.SetSettingAsync("widget_x", rect.Left.ToString());
+            await _engine.SetSettingAsync("widget_y", rect.Top.ToString());
+            await _engine.SetSettingAsync("widget_width", (rect.Right - rect.Left).ToString());
+            await _engine.SetSettingAsync("widget_height", (rect.Bottom - rect.Top).ToString());
+            return;
+        }
+        await _engine.SetSettingAsync("widget_x", Position.X.ToString());
+        await _engine.SetSettingAsync("widget_y", Position.Y.ToString());
+        await _engine.SetSettingAsync("widget_width", ((int)Bounds.Width).ToString());
+        await _engine.SetSettingAsync("widget_height", ((int)Bounds.Height).ToString());
     }
+
+    private async Task PersistAfterDragAsync()
+    {
+        // 等待系统拖拽完全结束，再读取物理窗口矩形并保存。
+        while (OperatingSystem.IsWindows() &&
+               (Win32Native.GetKeyState(0x01) & 0x8000) != 0)
+        {
+            await Task.Delay(40);
+        }
+        await Task.Delay(250);
+        await SaveGeometryAsync();
+    }
+
 
     private void OnQuickAddKeyDown(object? sender, KeyEventArgs e)
     {

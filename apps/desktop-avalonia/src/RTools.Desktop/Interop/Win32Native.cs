@@ -41,8 +41,27 @@ internal static class Win32Native
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool IsWindowVisible(IntPtr hWnd);
 
+
+
+
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint RegisterWindowMessage(string message);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern short GetKeyState(int virtualKey);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetWindowRect(IntPtr hWnd, out Rect rect);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(
