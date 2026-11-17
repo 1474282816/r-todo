@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0",
+  "productName": "RTools",
+  "version": "0.3.0",
+  "identifier": "dev.rtools.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "RTools",
+        "width": 380,
+        "height": 620,
+        "minWidth": 320,
+        "minHeight": 480,
+        "decorations": false,
+        "transparent": true,
+        "resizable": true,
+        "shadow": false,
+        "alwaysOnBottom": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "nsis",
+    "createUpdaterArtifacts": false,
+    "icon": [
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUzNjgzNEI0MjBDMEVGQTEKUldTaDc4QWd0RFJvNDVVM0piOFMrVThhRHgzbXBvbUE1T2RpUUVlWFlkNUZ0U2R1UlowVFk1S3QK",
+      "endpoints": [
+        "https://github.com/1474282816/r-todo/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

@@ -117,7 +117,7 @@ TransferDevice _device({String fingerprint = 'FP'}) => TransferDevice(
       download: false,
       deviceType: 'desktop',
       channels: const [
-        TransferChannel(host: '192.168.1.5', port: 53317, protocol: TransferProtocol.https),
+        TransferChannel(host: '192.168.1.5', port: 54417, protocol: TransferProtocol.https),
       ],
     );
 

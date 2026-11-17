@@ -182,7 +182,7 @@ void main() {
         fingerprint: 'ABCDEF123456',
         download: false,
         channels: [
-          TransferChannel(host: '192.168.1.5', port: 53317, protocol: TransferProtocol.https),
+          TransferChannel(host: '192.168.1.5', port: 54417, protocol: TransferProtocol.https),
         ],
       ),
     ]));

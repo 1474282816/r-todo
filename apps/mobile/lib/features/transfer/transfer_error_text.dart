@@ -4,7 +4,7 @@
 String transferErrorText(String code, {String? message}) {
   switch (code) {
     case 'PORT_IN_USE':
-      return '端口 53317 已被占用。可能官方 LocalSend 正在运行，或换一个端口再试。';
+      return '端口 54417 已被占用。可能官方 LocalSend 正在运行，或换一个端口再试。';
     case 'FIREWALL':
       return '系统防火墙拦截了连接。请在防火墙设置中允许 rtools 访问局域网。';
     case 'MULTICAST_UNAVAILABLE':

@@ -997,7 +997,7 @@ mod address_tests {
             device_model: Some("Android".into()),
             device_type: None,
             fingerprint: "FP".into(),
-            port: 53317,
+            port: crate::DEFAULT_PORT,
             protocol: ProtocolType::Https,
             download: false,
             host: host.map(str::to_string),

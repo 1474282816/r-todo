@@ -30,7 +30,7 @@ void main() {
     });
 
     test('端口占用提示可操作信息', () {
-      expect(transferErrorText('PORT_IN_USE'), contains('53317'));
+      expect(transferErrorText('PORT_IN_USE'), contains('54417'));
     });
 
     test('未知错误码带出原始 message', () {

@@ -92,7 +92,7 @@ class _TransferSettingsPageState extends ConsumerState<TransferSettingsPage> {
           const Gap(8),
           FTextField(
             control: FTextFieldControl.managed(controller: _portController),
-            hint: '端口（默认 53317）',
+            hint: '端口（默认 54417）',
           ),
           const Gap(8),
           FTextField(

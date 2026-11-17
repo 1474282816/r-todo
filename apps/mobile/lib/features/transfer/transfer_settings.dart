@@ -11,7 +11,7 @@ class TransferSettings {
   });
 
   static const String defaultAlias = 'rtools';
-  static const int defaultPort = 53317;
+  static const int defaultPort = 54417;
   static const String defaultReceiveDirName = 'rtools';
 
   final String alias;

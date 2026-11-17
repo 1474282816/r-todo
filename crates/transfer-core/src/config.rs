@@ -2,8 +2,12 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// LocalSend 默认端口（TCP + UDP 共用）
-pub const DEFAULT_PORT: u16 = 53317;
+/// RTools 默认端口（TCP + UDP 共用）。
+///
+/// 官方 LocalSend 使用 53317，但 Windows Hyper-V/WSL 经常把该端口纳入保留段，
+/// 导致绑定直接失败。使用独立高位端口可以避免和官方 LocalSend 争用；
+/// 发现协议会携带真实端口，已配对设备无需硬编码。
+pub const DEFAULT_PORT: u16 = 54417;
 
 /// 互传服务配置。
 ///

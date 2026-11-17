@@ -155,6 +155,8 @@ pub struct ImportedTask {
     #[serde(default)]
     pub deleted: bool,
     #[serde(default)]
+    pub deleted_at: Option<DateTime<Utc>>,
+    #[serde(default)]
     pub completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -171,7 +173,9 @@ impl ImportedTask {
             repeat_rule: self.repeat_rule,
             sort_order: self.sort_order,
             completed_at: self.completed_at,
-            deleted_at: self.deleted.then_some(self.updated_at),
+            deleted_at: self
+                .deleted_at
+                .or_else(|| self.deleted.then_some(self.updated_at)),
             created_at: self.created_at,
             updated_at: self.updated_at,
             revision: 0,
@@ -206,7 +210,7 @@ pub struct ImportResult {
 pub fn parse_rtodo_json(content: &str) -> Result<Vec<Task>, String> {
     let file: RTodoJsonFile =
         serde_json::from_str(content).map_err(|e| format!("JSON 解析失败: {e}"))?;
-    if file.format != "r-todo/todo" {
+    if file.format != "rtools/todo" && file.format != "r-todo/todo" {
         return Err(format!("不支持的 format: {}", file.format));
     }
     if file.version != 1 {
@@ -400,16 +404,19 @@ mod tests {
 
     #[test]
     fn parses_legacy_json() {
-        let json = r#"{
-          "format":"r-todo/todo","version":1,"exported_at":"2026-11-16T00:00:00Z",
+        let template = r#"{
+          "format":"FORMAT","version":1,"exported_at":"2026-11-16T00:00:00Z",
           "todos":[{"id":"x","title":"测试","priority":"high","remind_at":null,
           "remind_offset_min":15,"repeat_rule":null,"sort_order":1000,
           "deleted":false,"completed_at":null,
           "created_at":"2026-11-16T00:00:00Z","updated_at":"2026-11-16T00:00:00Z"}]
         }"#;
-        let tasks = parse_rtodo_json(json).unwrap();
-        assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].title, "测试");
+        for format in ["r-todo/todo", "rtools/todo"] {
+            let json = template.replace("FORMAT", format);
+            let tasks = parse_rtodo_json(&json).unwrap();
+            assert_eq!(tasks.len(), 1);
+            assert_eq!(tasks[0].title, "测试");
+        }
     }
 
     #[test]

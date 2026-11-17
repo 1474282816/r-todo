@@ -73,7 +73,7 @@ void main() {
             'fingerprint': 'ABC',
             'download': false,
             'channels': [
-              {'host': '192.168.1.5', 'port': 53317, 'protocol': 'https'},
+              {'host': '192.168.1.5', 'port': 54417, 'protocol': 'https'},
             ],
           },
         ],
@@ -86,7 +86,7 @@ void main() {
       expect(devices.single.deviceModel, 'Windows');
       expect(devices.single.deviceType, 'desktop');
       expect(devices.single.channels.single.host, '192.168.1.5');
-      expect(devices.single.channels.single.port, 53317);
+      expect(devices.single.channels.single.port, 54417);
       expect(devices.single.channels.single.protocol, TransferProtocol.https);
     });
 

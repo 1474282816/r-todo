@@ -6,7 +6,7 @@
 
 | 端 | 技术 |
 |---|---|
-| Windows | Avalonia 12 + C# + Rust Engine |
+| Windows | Tauri 2 + React + Rust Engine |
 | Android / iPad | Flutter |
 | 同步服务 | Rust + Axum + SQLite（Docker） |
 
@@ -15,7 +15,8 @@
 ```
 rtools/
 ├── apps/
-│   ├── desktop-avalonia/ # Avalonia 桌面端
+│   ├── desktop-tauri/    # 当前 Tauri 桌面端
+│   ├── desktop-avalonia/ # 历史 Avalonia 实现（回退）
 │   ├── desktop/          # 旧 Tauri 实现（归档）
 │   └── mobile/           # Flutter 移动端
 ├── crates/
@@ -48,9 +49,9 @@ Windows 发布还需要 Inno Setup 6。
 cd crates/rtools-workspace
 cargo build -p rtools-engine
 
-# 起 Avalonia 桌面端
-cd ../../apps/desktop-avalonia
-dotnet run --project src/RTools.Desktop/RTools.Desktop.csproj
+# 起 Tauri 桌面端
+cd ../desktop-tauri
+pnpm tauri dev
 
 # 起移动端（需已启动模拟器或连真机）
 cd ../mobile
@@ -90,4 +91,6 @@ flutter run
 
 ## 状态
 
-当前版本为 `0.2.0`。桌面、Android、同步服务与互传均已接入；安装包见 [发布说明](docs/release-notes-rtools-0.2.0.md)。
+当前版本为 `0.3.0`。桌面端已切换为 Tauri 2，Rust Engine、Android、
+同步服务与互传继续共用。安装包见
+[Tauri 桌面重建交付说明](docs/handoff/2026-11-17-tauri-desktop-rebuild.md)。

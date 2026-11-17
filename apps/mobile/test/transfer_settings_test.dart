@@ -10,10 +10,10 @@ void main() {
   });
 
   group('TransferSettingsStore', () {
-    test('首次加载用默认值（端口 53317 / 不自动接受 / 无 PIN）', () async {
+    test('首次加载用默认值（端口 54417 / 不自动接受 / 无 PIN）', () async {
       final settings = await TransferSettingsStore().load();
 
-      expect(settings.port, 53317);
+      expect(settings.port, 54417);
       expect(settings.alias, isNotEmpty);
       // Q36：已确认设备自动收文件，默认开。
       expect(settings.autoAcceptFavorites, isTrue);
@@ -39,7 +39,7 @@ void main() {
 
     test('空白 alias 回退到默认值，空 PIN 视为未设置', () async {
       final store = TransferSettingsStore();
-      await store.save(const TransferSettings(alias: '   ', port: 53317, pin: ''));
+      await store.save(const TransferSettings(alias: '   ', port: 54417, pin: ''));
 
       final settings = await store.load();
       expect(settings.alias, TransferSettings.defaultAlias);

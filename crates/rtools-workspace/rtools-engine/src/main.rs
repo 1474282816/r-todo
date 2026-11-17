@@ -518,7 +518,7 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
                 .unwrap_or_else(|| "rtools".into());
             let port = rpc_try!(db::get_setting(&conn, "transfer_port"))
                 .and_then(|value| value.parse().ok())
-                .unwrap_or(53317);
+                .unwrap_or(rtodo_transfer_core::DEFAULT_PORT);
             let receive = rpc_try!(db::get_setting(&conn, "transfer_receive_dir"))
                 .filter(|value| !value.trim().is_empty())
                 .map(PathBuf::from)
@@ -548,7 +548,10 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
         }
         "transfer.settings" => {
             let alias = payload["alias"].as_str().unwrap_or("rtools");
-            let port = payload["port"].as_u64().unwrap_or(53317).clamp(1, 65535);
+            let port = payload["port"]
+                .as_u64()
+                .unwrap_or(rtodo_transfer_core::DEFAULT_PORT as u64)
+                .clamp(1, 65535);
             let receive_dir = payload["receive_dir"].as_str().unwrap_or_default();
             let pin = payload["pin"].as_str().unwrap_or_default();
             let auto_accept = payload["auto_accept_favorites"].as_bool().unwrap_or(false);
@@ -594,7 +597,10 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
                     .await
                     .add_manual_ip(
                         payload["host"].as_str().unwrap_or_default(),
-                        payload["port"].as_u64().unwrap_or(53317) as u16,
+                        payload["port"]
+                            .as_u64()
+                            .unwrap_or(rtodo_transfer_core::DEFAULT_PORT as u64)
+                            as u16,
                     )
                     .await
             );

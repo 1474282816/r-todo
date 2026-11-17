@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+html,
+body {
+  background: transparent;
+}
+
+/*
+ * 窗口底色变量。
+ * --win-alpha：不透明度（设置面板滑杆写入 system.ts），默认 0.82。
+ * 这里必须是 0~1 的 number，CSS 里用现代 rgb() 空格+斜杠语法拼。
+ */
+body {
+  --win-alpha: 0.82;
+  --win-rgb-light: 240 240 243;
+  --win-rgb-dark: 24 24 27;
+}
+
+/*
+ * 主窗口（透明无边框挂件）：半透明背景 + CSS 圆角
+ * 圆角靠 border-radius + overflow: hidden 保证内容不溢出
+ */
+body[data-view="main"] #root {
+  background: rgb(var(--win-rgb-light) / var(--win-alpha));
+  border-radius: 12px;
+}
+@media (prefers-color-scheme: dark) {
+  body[data-view="main"] #root {
+    background: rgb(var(--win-rgb-dark) / var(--win-alpha));
+  }
+}
+
+/*
+ * 材质档位（body[data-backdrop] 由 system.ts 设置）：
+ *
+ * translucent（半透明）：纯 CSS，不读壁纸、不跑 Rust 模糊，零开销，
+ *   任何机器任何壁纸都一定生效。透明度走同一个 --win-alpha 滑杆。
+ *
+ * mica / mica_alt / acrylic（实时模糊）：--wp-mica 是 Rust 端壁纸高斯模糊
+ *   图的 data URI（模拟 Mica，换壁纸经 WM_SETTINGCHANGE 事件实时刷新）。
+ *   只叠一层薄底色保证文字对比度；DWM SystemBackdrop 因失焦黑屏（上游 bug）不用。
+ */
+body[data-view="main"][data-backdrop] #root {
+  background:
+    linear-gradient(rgb(var(--win-rgb-light) / 0.3), rgb(var(--win-rgb-light) / 0.3)),
+    var(--wp-mica, none) center / cover no-repeat;
+}
+@media (prefers-color-scheme: dark) {
+  body[data-view="main"][data-backdrop] #root {
+    background:
+      linear-gradient(rgb(var(--win-rgb-dark) / 0.38), rgb(var(--win-rgb-dark) / 0.38)),
+      var(--wp-mica, none) center / cover no-repeat;
+  }
+}
+
+/* 半透明档：单图层，透明度完全由滑杆控制，不叠模糊图 */
+body[data-view="main"][data-backdrop="translucent"] #root {
+  background: rgb(var(--win-rgb-light) / var(--win-alpha));
+}
+@media (prefers-color-scheme: dark) {
+  body[data-view="main"][data-backdrop="translucent"] #root {
+    background: rgb(var(--win-rgb-dark) / var(--win-alpha));
+  }
+}
+
+/*
+ * 其他窗口（月视图等，有系统边框）：不透明背景 + 无圆角
+ * 避免圆角尖露白
+ */
+body:not([data-view="main"]) #root {
+  background: transparent;
+}
+
+body {
+  @apply text-neutral-900 dark:text-neutral-100;
+  font-family:
+    "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system,
+    BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 全局：整个应用禁止文本选择（拖动区必须），交互组件在自己那里 override */
+* {
+  user-select: none;
+}
+input,
+textarea {
+  user-select: text;
+}
+
+/* 滚动条极简 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
+}
+
+/* datetime-local 在暗色下能读 */
+@media (prefers-color-scheme: dark) {
+  input[type="datetime-local"] {
+    color-scheme: dark;
+  }
+}

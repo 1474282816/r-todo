@@ -4,10 +4,10 @@
   "version": "0.0.1",
   "description": "极简跨端待办工具（Windows + Android + iPad）",
   "scripts": {
-    "dev:desktop": "pnpm --filter desktop tauri dev",
+    "dev:desktop": "pnpm --filter desktop-tauri tauri dev",
     "dev:mobile": "pnpm -C apps/mobile exec flutter run",
     "dev:server": "docker compose -f server/docker-compose.yml up",
-    "build:desktop": "pnpm --filter desktop tauri build",
+    "build:desktop": "pnpm --filter desktop-tauri tauri build",
     "build:mobile:android": "pnpm -C apps/mobile exec flutter build apk",
     "build:mobile:ios": "pnpm -C apps/mobile exec flutter build ipa"
   },

@@ -122,7 +122,7 @@ fn envelope_roundtrips() {
 fn config_defaults_to_localsend_port() {
     let config = TransferConfig::default();
     assert_eq!(config.port, DEFAULT_PORT);
-    assert_eq!(config.port, 53317);
+    assert_eq!(config.port, 54417);
     assert!(!config.auto_accept_favorites);
     assert!(config.pin.is_none());
 }

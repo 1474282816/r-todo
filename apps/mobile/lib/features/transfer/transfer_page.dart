@@ -609,7 +609,7 @@ class _ManualIpDialog extends StatefulWidget {
 
 class _ManualIpDialogState extends State<_ManualIpDialog> {
   final _hostController = TextEditingController();
-  final _portController = TextEditingController(text: '53317');
+  final _portController = TextEditingController(text: '54417');
 
   @override
   void dispose() {
@@ -632,7 +632,7 @@ class _ManualIpDialogState extends State<_ManualIpDialog> {
           const Gap(8),
           FTextField(
             control: FTextFieldControl.managed(controller: _portController),
-            hint: '端口（默认 53317）',
+            hint: '端口（默认 54417）',
           ),
         ],
       ),
@@ -646,7 +646,7 @@ class _ManualIpDialogState extends State<_ManualIpDialog> {
             context,
             _ManualIpInput(
               host: _hostController.text.trim(),
-              port: int.tryParse(_portController.text.trim()) ?? 53317,
+              port: int.tryParse(_portController.text.trim()) ?? 54417,
             ),
           ),
           child: const Text('连接'),
