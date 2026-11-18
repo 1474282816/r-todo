@@ -88,6 +88,7 @@ apps/desktop/src-tauri/.cargo/
 
 # ────── RTools release installers ──────
 /RTools_*.exe
+/RTools_*.apk
 /apps/desktop-tauri/src-tauri/target/
 /apps/desktop-tauri/dist/
 /apps/desktop-tauri/node_modules/
