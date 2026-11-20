@@ -30,12 +30,14 @@ body {
  * 主窗口（透明无边框挂件）：半透明背景 + CSS 圆角
  * 圆角靠 border-radius + overflow: hidden 保证内容不溢出
  */
-body[data-view="main"] #root {
+body[data-view="main"] #root,
+  body[data-view="battery"] #root {
   background: rgb(var(--win-rgb-light) / var(--win-alpha));
   border-radius: 12px;
 }
 @media (prefers-color-scheme: dark) {
-  body[data-view="main"] #root {
+  body[data-view="main"] #root,
+  body[data-view="battery"] #root {
     background: rgb(var(--win-rgb-dark) / var(--win-alpha));
   }
 }
@@ -50,13 +52,15 @@ body[data-view="main"] #root {
  *   图的 data URI（模拟 Mica，换壁纸经 WM_SETTINGCHANGE 事件实时刷新）。
  *   只叠一层薄底色保证文字对比度；DWM SystemBackdrop 因失焦黑屏（上游 bug）不用。
  */
-body[data-view="main"][data-backdrop] #root {
+body[data-view="main"][data-backdrop] #root,
+body[data-view="battery"][data-backdrop] #root {
   background:
     linear-gradient(rgb(var(--win-rgb-light) / 0.3), rgb(var(--win-rgb-light) / 0.3)),
     var(--wp-mica, none) center / cover no-repeat;
 }
 @media (prefers-color-scheme: dark) {
-  body[data-view="main"][data-backdrop] #root {
+  body[data-view="main"][data-backdrop] #root,
+body[data-view="battery"][data-backdrop] #root {
     background:
       linear-gradient(rgb(var(--win-rgb-dark) / 0.38), rgb(var(--win-rgb-dark) / 0.38)),
       var(--wp-mica, none) center / cover no-repeat;
@@ -64,11 +68,13 @@ body[data-view="main"][data-backdrop] #root {
 }
 
 /* 半透明档：单图层，透明度完全由滑杆控制，不叠模糊图 */
-body[data-view="main"][data-backdrop="translucent"] #root {
+body[data-view="main"][data-backdrop="translucent"] #root,
+body[data-view="battery"][data-backdrop="translucent"] #root {
   background: rgb(var(--win-rgb-light) / var(--win-alpha));
 }
 @media (prefers-color-scheme: dark) {
-  body[data-view="main"][data-backdrop="translucent"] #root {
+  body[data-view="main"][data-backdrop="translucent"] #root,
+body[data-view="battery"][data-backdrop="translucent"] #root {
     background: rgb(var(--win-rgb-dark) / var(--win-alpha));
   }
 }
@@ -77,13 +83,9 @@ body[data-view="main"][data-backdrop="translucent"] #root {
  * 其他窗口（月视图等，有系统边框）：不透明背景 + 无圆角
  * 避免圆角尖露白
  */
-/* 电量挂件：跟主挂件同一套半透明底，但圆角靠组件自己画 */
-body[data-view="battery"] #root {
-  background: transparent;
-  border-radius: 12px;
-}
 
-body:not([data-view="main"]) #root {
+/* 其余窗口（月视图/互传）不透明：它们有系统边框，不需要材质 */
+body:not([data-view="main"]):not([data-view="battery"]) #root {
   background: transparent;
 }
 

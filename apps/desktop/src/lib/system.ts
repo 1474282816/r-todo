@@ -142,6 +142,72 @@ async function refreshWindowVisual(): Promise<void> {
     document.body.dataset.backdrop = "translucent";
     document.body.style.removeProperty("--wp-mica");
   }
+
+  // 把最终生效的材质广播给其它窗口。
+  //
+  // 为什么要广播：每个 Tauri 窗口是独立 webview，localStorage 不共享
+  // （WebView2 各环境隔离），电量挂件自己读 BACKDROP_KEY 只会拿到默认值
+  // translucent —— 表现出来就是"两个窗口材质不一样"。
+  // 主窗口是唯一决定材质的窗口（设置面板在它里面），由它推送、其余窗口跟随。
+  broadcastVisual(kind, getWindowOpacity());
+}
+
+/** 当前生效的材质状态，跨窗口共享用。 */
+interface VisualState {
+  kind: Backdrop;
+  /** 已算好的壁纸模糊图 data URI；`translucent` / `none` 时为 null。 */
+  mica: string | null;
+  alpha: number;
+}
+
+/**
+ * 把材质状态推给所有窗口。
+ *
+ * 只由主窗口调用 —— 它持有设置面板，是材质的唯一真相来源。
+ */
+async function broadcastVisual(kind: Backdrop, alpha: number): Promise<void> {
+  try {
+    const { emit } = await import("@tauri-apps/api/event");
+    const micaVar = document.body.style.getPropertyValue("--wp-mica");
+    // 从 `url("data:image/png;base64,....")` 里取出原始 data URI
+    const mica = micaVar ? micaVar.replace(/^url\("?/, "").replace(/"?\)$/, "") : null;
+    await emit("visual-changed", { kind, mica, alpha });
+  } catch {
+    /* 非 Tauri 环境：忽略 */
+  }
+}
+
+/**
+ * 订阅主窗口推来的材质状态，并应用到当前窗口。
+ *
+ * 供副窗口（电量挂件等）调用。副窗口不要自己读 localStorage 决定材质 ——
+ * 读不到用户在设置面板里的选择。
+ */
+export async function followVisualChanges(): Promise<void> {
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    await listen<VisualState>("visual-changed", (e) => {
+      const { kind, mica, alpha } = e.payload;
+      document.body.style.setProperty("--win-alpha", String(alpha));
+      if (kind === "none") {
+        delete document.body.dataset.backdrop;
+        document.body.style.removeProperty("--wp-mica");
+        return;
+      }
+      document.body.dataset.backdrop = kind;
+      if (mica) {
+        document.body.style.setProperty("--wp-mica", `url("${mica}")`);
+      } else {
+        document.body.style.removeProperty("--wp-mica");
+      }
+    });
+
+    // 主动要一次当前状态：副窗口可能在主窗口广播之后才创建
+    const { emit } = await import("@tauri-apps/api/event");
+    await emit("visual-request");
+  } catch {
+    /* 非 Tauri 环境：忽略 */
+  }
 }
 
 /** 监听系统壁纸变化，自动刷新模糊背景（挂件启动后调用一次） */
@@ -168,6 +234,16 @@ export async function setWindowBackdrop(kind: Backdrop): Promise<void> {
 /** 启动时恢复材质偏好（App 挂载后调用） */
 export async function restoreBackdrop(): Promise<void> {
   await refreshWindowVisual();
+  // 副窗口（电量挂件）创建后可能主动来要一次当前材质，
+  // 这里监听并重新广播 —— 否则它在主窗口广播之后才打开时永远是默认色。
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    await listen("visual-request", () => {
+      refreshWindowVisual().catch(() => {});
+    });
+  } catch {
+    /* 非 Tauri 环境：忽略 */
+  }
 }
 
 export async function isAutostartEnabled(): Promise<boolean> {

@@ -10,6 +10,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 
+import { followVisualChanges } from "../lib/system";
+
 interface DeviceReading {
   id: string;
   name: string;
@@ -127,6 +129,16 @@ export function BatteryWidget() {
     };
   }, [load, refresh]);
 
+  // 材质：跟随主挂件。
+  //
+  // 不能在这里自己读 localStorage 决定材质 —— 每个 Tauri 窗口是独立
+  // webview，localStorage 不共享，读到的永远是默认值 translucent，
+  // 结果就是"待办窗口是壁纸模糊、电量窗口是一块死灰色"。
+  // 由主窗口广播实际生效的材质，这里只负责应用。
+  useEffect(() => {
+    followVisualChanges().catch(() => {});
+  }, []);
+
   const hide = async () => {
     try {
       await invoke("close_battery_widget");
@@ -147,7 +159,11 @@ export function BatteryWidget() {
   return (
     <div
       ref={rootRef}
-      className="flex h-full flex-col overflow-hidden rounded-xl border border-black/5 bg-white/80 shadow-sm backdrop-blur-xl dark:border-white/10 dark:bg-neutral-900/80"
+      // 背景交给 styles.css 的 `body[data-view="battery"] #root` 统一处理，
+      // 这里**不要**再写 bg-* / backdrop-blur：
+      // 透明窗口上 backdrop-filter 采样不到桌面，只会糊成一块死色，
+      // 而且会盖掉主挂件那套壁纸模糊材质。
+      className="flex h-full flex-col overflow-hidden rounded-xl border border-black/5 shadow-sm dark:border-white/10"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -210,6 +226,21 @@ function DeviceRow({ device }: { device: DeviceReading }) {
   const isCharging = device.state === "charging";
   const color = levelColor(percent);
 
+  // 右侧状态文字：有百分比就报百分比，否则说明为什么没有。
+  // 充电态单独说"充电中" —— 这时电压被顶高，换算出的百分比是假的，
+  // 与其显示一个虚高的 100%，不如直说在充电。
+  const statusText = percent !== null
+    ? `${percent}%`
+    : isCharging
+      ? "充电中"
+      : device.online
+        ? "--"
+        : "休眠";
+
+  // 充电时没有可信百分比，电量条改成满格流动效果，不要画成 0%。
+  const barWidth = percent ?? (isCharging ? 100 : 0);
+  const barColor = isCharging ? "rgb(16 185 129)" : color;
+
   return (
     <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]">
       <KindIcon kind={device.kind} />
@@ -220,16 +251,19 @@ function DeviceRow({ device }: { device: DeviceReading }) {
             {device.name}
           </span>
           <span className="ml-auto shrink-0 text-[11px] font-medium tabular-nums" style={{ color }}>
-            {percent === null ? (device.online ? "--" : "休眠") : `${percent}%`}
+            {statusText}
           </span>
         </div>
         {/* 电量条：圆角细条，跟百分比同色 */}
         <div className="mt-1 h-[3px] w-full overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/[0.12]">
           <div
-            className="h-full rounded-full transition-all duration-300"
+            className={
+              "h-full rounded-full transition-all duration-300" +
+              (isCharging ? " animate-pulse" : "")
+            }
             style={{
-              width: `${percent ?? 0}%`,
-              backgroundColor: color,
+              width: `${barWidth}%`,
+              backgroundColor: barColor,
             }}
           />
         </div>

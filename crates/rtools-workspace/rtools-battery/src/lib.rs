@@ -179,13 +179,17 @@ impl BatteryService {
                 continue;
             }
 
-            // 3. 罗技接收器：VID 046D 且有 HID++ 接口
+            // 3. 罗技设备（接收器或鼠标本体）
             //
-            // 必须同时排除虚拟 HID：Windows 会给虚拟设备分配 046D:407F
-            // 这类"借用"罗技 VID 的条目，它也有 0xFF00 接口，只按 VID 判断会
-            // 把 "HID VHF Driver" 当成第二只鼠标。
+            // 两个坑都要避开：
+            // a) 虚拟 HID 会借用罗技 VID（046D:407F "HID VHF Driver"），
+            //    它也有 0xFF00 接口，只按 VID 判断会多出一台不存在的设备。
+            // b) 鼠标插着 USB 线时，本体（如 046D:C08D）和接收器（046D:C539）
+            //    会同时枚举出来 —— 那是同一只鼠标的两条通道，不是两台设备。
+            //    这里只认接收器，本体跳过；纯有线连接（无接收器）时再回退到本体。
             if key.0 == 0x046D
                 && is_real_peripheral(iface)
+                && is_logitech_primary(iface, &interfaces)
                 && interfaces
                     .iter()
                     .any(|i| i.vendor_id == 0x046D && i.usage_page == 0xFF00)
@@ -499,10 +503,28 @@ fn read_hidpp20(
                 // 大端：0E 66 = 3686mV
                 let mv = u16::from_be_bytes([data[0], data[1]]);
                 if (3000..=4500).contains(&mv) {
+                    // 电压换算出的百分比在充电时是虚高的：
+                    // 锂电池充电电压被顶到 4.2V 附近，按放电曲线算就是 100%，
+                    // 但实际可能只有一半电量。所以充电态不报百分比，只报"充电中"。
+                    // 判据：>= 4100mV 认为正在充电。
+                    //
+                    // 实测这只 G502 插线时读数在 4120~4145mV 之间浮动，
+                    // 拔线后掉到 3686mV 附近。4100 这条线能分开两种状态，
+                    // 又不会把刚充满静置的电池误判成充电。
+                    let charging = mv >= 4100;
+                    let percent = if charging {
+                        None
+                    } else {
+                        hidpp::voltage_to_percent(mv)
+                    };
                     return Ok((
-                        hidpp::voltage_to_percent(mv),
+                        percent,
                         Some(mv),
-                        ChargeState::Unknown,
+                        if charging {
+                            ChargeState::Charging
+                        } else {
+                            ChargeState::Unknown
+                        },
                         format!("HID++ 0x1001 电压 {mv}mV"),
                     ));
                 }
@@ -569,6 +591,22 @@ fn is_real_peripheral(iface: &hid::HidInterface) -> bool {
         return false;
     }
     true
+}
+
+/// 罗技设备去重：同一只鼠标会同时以"接收器"和"本体"两个 PID 出现。
+///
+/// 判据是产品名 —— 接收器叫 "USB Receiver"，本体叫具体型号
+/// （如 "G502 LIGHTSPEED Wireless Gaming Mouse"）。
+/// 有接收器在时只保留接收器：走接收器通道才能同时看到其它配对的设备，
+/// 而且接收器不会因为鼠标关机而消失。
+fn is_logitech_primary(iface: &hid::HidInterface, all: &[hid::HidInterface]) -> bool {
+    let is_receiver = iface.product.contains("Receiver");
+    if is_receiver {
+        return true;
+    }
+    // 本体：只有在没有任何接收器时才作为主设备
+    !all.iter()
+        .any(|i| i.vendor_id == 0x046D && i.product.contains("Receiver"))
 }
 
 fn guess_kind(iface: &hid::HidInterface) -> DeviceKind {
