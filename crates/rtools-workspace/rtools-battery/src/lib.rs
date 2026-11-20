@@ -381,16 +381,37 @@ fn read_standard(profile: &Profile, interfaces: &[hid::HidInterface]) -> Result<
 fn read_logitech(profile: &Profile, interfaces: &[hid::HidInterface]) -> Result<DeviceReading> {
     let transport = hidpp::HidppTransport::open(interfaces)?;
 
-    // 接收器上可能有多个索引，逐个探，取第一个能读到的
+    // 接收器上可能有多个索引，逐个探，取第一个能读到的。
+    //
+    // 整个流程有**时间预算**：鼠标深度休眠时，6 个索引全部"沉默"，
+    // 每个索引做深度唤醒要 1.9 秒，6 个就是 11 秒 —— 实测能把一次刷新
+    // 拖到 40 秒以上。那种情况下无论怎么试都读不到，早点放弃更合理。
+    const BUDGET: std::time::Duration = std::time::Duration::from_secs(3);
+    let started = std::time::Instant::now();
+
     let mut last_error = None;
     for index in 1..=6u8 {
-        // 设备闲置几秒就会休眠，此时 ping 直接失败。
-        // 先唤醒再读 —— 否则"鼠标刚动过就能读到、不动就报错"会让人以为程序有 bug。
-        if !transport.wake(index) {
+        if started.elapsed() > BUDGET {
+            last_error.get_or_insert_with(|| "读取超时（设备可能深度休眠）".into());
+            break;
+        }
+
+        let probe = transport.probe_index(index);
+        if probe == hidpp::IndexProbe::Absent {
+            // 该索引没配对设备，跳过
             continue;
         }
 
-        let Some(version) = transport.ping(index) else {
+        // 醒着就直接读；沉默的先试着叫醒
+        let version = if probe == hidpp::IndexProbe::Alive {
+            transport.ping(index)
+        } else if started.elapsed() < BUDGET && transport.wake(index) {
+            transport.ping(index)
+        } else {
+            None
+        };
+
+        let Some(version) = version else {
             continue;
         };
 

@@ -35,6 +35,17 @@ pub enum HidppReply {
     Err { feature: u8, function: u8, code: u8 },
 }
 
+/// 单个接收器索引的快速探测结果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexProbe {
+    /// 有设备且当前醒着（能正常回复）。
+    Alive,
+    /// 该索引没有配对设备（设备明确回了 UNKNOWN_DEVICE），可以永久跳过。
+    Absent,
+    /// 有设备但没回应 —— 可能休眠，值得尝试唤醒。
+    Silent,
+}
+
 impl HidppReply {
     pub fn data(&self) -> Option<&[u8]> {
         match self {
@@ -127,16 +138,34 @@ impl HidppTransport {
         // 罗技设备休眠后第一次请求基本都会丢，要连发几轮：
         // 第一轮把射频从低功耗叫醒，后面几轮才拿得到回复。
         // 每轮之间留 120ms —— 太密会让接收器自己回 BUSY（0x07）。
-        for round in 0..6 {
+        //
+        // 超时用 250ms 而不是 900ms：设备醒着就会立刻回，
+        // 不醒的话等再久也没用。3 轮 × 250ms 封顶约 1.1 秒。
+        for round in 0..3 {
             if self
-                .exchange(device_index, &[0x00, (0x01 << 4) | SW_ID, 0x00, 0x00], 900)
+                .exchange(device_index, &[0x00, (0x01 << 4) | SW_ID, 0x00, 0x00], 250)
                 .is_some()
             {
                 return true;
             }
-            std::thread::sleep(std::time::Duration::from_millis(120 + round * 60));
+            std::thread::sleep(std::time::Duration::from_millis(80 + round * 40));
         }
         false
+    }
+
+    /// 快速探测接收器上有哪些索引配了设备。
+    ///
+    /// 只发一次、超时很短（120ms）。用途是先缩小范围，避免对 6 个索引
+    /// 各做一轮深度唤醒 —— 那会拖到 30 秒以上。
+    ///
+    /// 未配对的索引会回 `0x08 UNKNOWN_DEVICE`（有回复但明确表示没设备），
+    /// 休眠设备则完全不回。两者都判定为"当前不可用"，但前者可以永久跳过。
+    pub fn probe_index(&self, device_index: u8) -> IndexProbe {
+        match self.exchange(device_index, &[0x00, (0x01 << 4) | SW_ID, 0x00, 0x00], 120) {
+            Some(HidppReply::Err { code: 0x08, .. }) => IndexProbe::Absent,
+            Some(_) => IndexProbe::Alive,
+            None => IndexProbe::Silent,
+        }
     }
 
     /// 协议版本探测。返回 `Some(2.0)` / `Some(1.0)`；设备不可达返回 `None`。
@@ -145,7 +174,13 @@ impl HidppTransport {
     /// 前者是稳定错误，后者重试会成功。
     pub fn ping(&self, device_index: u8) -> Option<f32> {
         for _ in 0..3 {
-            let reply = self.exchange(device_index, &[0x00, (0x01 << 4) | SW_ID, 0x00, 0x00], 900)?;
+            // 不能写成 `exchange(...)?` —— 超时返回 None 时会直接把整个
+            // 循环短路掉，后面两次重试根本没机会跑。
+            let Some(reply) =
+                self.exchange(device_index, &[0x00, (0x01 << 4) | SW_ID, 0x00, 0x00], 400)
+            else {
+                continue;
+            };
             match reply {
                 HidppReply::Err { code, .. } => {
                     // 0x01 = 该索引是 HID++ 1.0 设备

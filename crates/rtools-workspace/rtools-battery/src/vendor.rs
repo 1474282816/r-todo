@@ -11,14 +11,22 @@
 
 use anyhow::{anyhow, Result};
 
-use super::hid::HidDevice;
-use super::profile::{ChargeState, VendorSpec};
+use super::hid::{HidDevice, HidInterface};
+use super::profile::{ChargeQuery, ChargeState, VendorSpec};
 
 /// 读 Feature Report 时用的 buffer 大小。
 ///
 /// 厂商会把电量写在声明长度之外（A75 声明 8 字节，电量在第 9 字节），
 /// 给到 64 字节足够覆盖所有已知型号。
 const REPORT_BUFFER: usize = 64;
+
+/// 命令通道一帧的长度。
+///
+/// Compx 方案的 Output Report 固定 20 字节，最后一字节是校验和。
+const COMMAND_FRAME_LEN: usize = 20;
+
+/// 校验和字节的下标（= 帧长 - 1）。
+const CHECKSUM_INDEX: usize = COMMAND_FRAME_LEN - 1;
 
 /// 一次厂商读取的结果。
 #[derive(Debug, Clone)]
@@ -57,10 +65,17 @@ pub fn read(interfaces: &[super::hid::HidInterface], spec: &VendorSpec) -> Resul
         }
     });
 
+    // 充电状态优先从命令通道查；查不到再退回报文里的状态字节。
+    // 顺序不能反：A75 的报文里没有充电位，退回逻辑只会得到 Unknown。
     let state = spec
-        .state_index
-        .and_then(|idx| raw.get(idx))
-        .and_then(|b| spec.state_map.get(&b.to_string()).copied())
+        .charge_query
+        .as_ref()
+        .and_then(|q| read_charge_state(interfaces, q))
+        .or_else(|| {
+            spec.state_index
+                .and_then(|idx| raw.get(idx))
+                .and_then(|b| spec.state_map.get(&b.to_string()).copied())
+        })
         .unwrap_or(ChargeState::Unknown);
 
     Ok(VendorReading {
@@ -68,6 +83,81 @@ pub fn read(interfaces: &[super::hid::HidInterface], spec: &VendorSpec) -> Resul
         state,
         raw,
     })
+}
+
+/// 走命令通道查一次充电状态。
+///
+/// 返回 `None` 表示这条通道没应答（不代表"未充电"）—— 上层会退回报文里的状态字节。
+///
+/// # 这条通道不可靠，别指望它
+///
+/// 实测数据（Leobog A75，`13 05 00`）：
+/// - 刚插拔线后的窗口期：6/12、10/12、4/5 能收到回复
+/// - 静置一段时间后：**0/8、0/12 完全沉默**
+/// - 同期对照 `13 07 01` 始终 8/8 —— 通道本身没坏，是这个命令不响应
+///
+/// 也就是说它吐出的状态位（`0x10` 充电 / `0x01` 放电）本身是对的，
+/// 但只在特定时机才给。所以这里**只做一两次快速尝试**，拿不到就当没有，
+/// 绝不为了它拖慢轮询。
+pub fn read_charge_state(interfaces: &[HidInterface], query: &ChargeQuery) -> Option<ChargeState> {
+    let iface = interfaces
+        .iter()
+        .find(|i| i.usage_page == query.usage_page && i.output_len > 0)?;
+
+    let device = HidDevice::open(iface, true).ok()?;
+
+    for _ in 0..query.retries {
+        // 清掉上一条命令的迟到回复，否则可能读到旧状态
+        device.drain(32);
+
+        let frame = build_command_frame(query.command, query.argument);
+        if device.write_output(&frame, 400).is_err() {
+            continue;
+        }
+
+        // 回复要么很快到，要么根本不来 —— 等太久纯属浪费
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(400);
+        while std::time::Instant::now() < deadline {
+            let Some(reply) = device.read_input(60) else {
+                continue;
+            };
+            if reply.len() <= query.state_index || reply[0] != query.response_id {
+                continue;
+            }
+            // 校验和不对的回复直接丢（可能是残帧）
+            if !checksum_ok(&reply) {
+                continue;
+            }
+            let byte = reply[query.state_index];
+            if let Some(state) = query.state_map.get(&byte.to_string()).copied() {
+                return Some(state);
+            }
+        }
+    }
+    None
+}
+
+/// 拼一条命令帧：`[0]=0x13 [1]=cmd [2]=arg ... [19]=checksum`。
+fn build_command_frame(command: u8, argument: u8) -> [u8; COMMAND_FRAME_LEN] {
+    let mut frame = [0u8; COMMAND_FRAME_LEN];
+    frame[0] = 0x13;
+    frame[1] = command;
+    frame[2] = argument;
+    frame[CHECKSUM_INDEX] = frame[..CHECKSUM_INDEX]
+        .iter()
+        .fold(0u8, |a, b| a.wrapping_add(*b));
+    frame
+}
+
+/// 校验回复帧的最后一字节是否等于前面所有字节之和。
+fn checksum_ok(frame: &[u8]) -> bool {
+    if frame.len() < COMMAND_FRAME_LEN {
+        return false;
+    }
+    let sum = frame[..CHECKSUM_INDEX]
+        .iter()
+        .fold(0u8, |a, b| a.wrapping_add(*b));
+    sum == frame[CHECKSUM_INDEX]
 }
 
 /// 扫描所有 Feature 接口，把每个 RID 的数据块导出来。
@@ -106,4 +196,67 @@ pub struct ProbeEntry {
     pub usage: u16,
     pub report_id: u8,
     pub data: Vec<u8>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_frame_has_correct_checksum() {
+        // 实测帧：13 05 00 ... 校验和 0x18
+        let frame = build_command_frame(0x05, 0x00);
+        assert_eq!(frame[0], 0x13);
+        assert_eq!(frame[1], 0x05);
+        assert_eq!(frame[2], 0x00);
+        assert_eq!(frame[CHECKSUM_INDEX], 0x13 + 0x05);
+        assert!(checksum_ok(&frame));
+    }
+
+    #[test]
+    fn checksum_rejects_bad_frame() {
+        let mut frame = build_command_frame(0x05, 0x00);
+        frame[CHECKSUM_INDEX] ^= 0xFF;
+        assert!(!checksum_ok(&frame));
+    }
+
+    #[test]
+    fn checksum_rejects_short_frame() {
+        // 7 字节的短报文不是命令通道的格式
+        assert!(!checksum_ok(&[0x13, 0x05, 0x00, 0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn real_charging_reply_is_recognized() {
+        // 插线实测帧：[7]=0x10。
+        // 校验和 = 0x13+0x0A+0x01+0x00+0x04+0x05+0x64+0x10 = 0x9B
+        let reply = [
+            0x13, 0x0A, 0x01, 0x00, 0x04, 0x05, 0x64, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x9B,
+        ];
+        assert!(checksum_ok(&reply));
+        assert_eq!(reply[7], 0x10);
+    }
+
+    #[test]
+    fn real_discharging_reply_is_recognized() {
+        // 拔线实测帧：[7]=0x01。
+        // 校验和 = 0x13+0x0A+0x01+0x00+0x04+0x05+0x64+0x01 = 0x8C
+        let reply = [
+            0x13, 0x0A, 0x01, 0x00, 0x04, 0x05, 0x64, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x8C,
+        ];
+        assert!(checksum_ok(&reply));
+        assert_eq!(reply[7], 0x01);
+    }
+
+    #[test]
+    fn real_known_good_frame_from_device() {
+        // 从设备抓到的真实帧（13 07 01 的回复），校验和由设备自己算出来
+        let reply = [
+            0x13, 0x07, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x1C,
+        ];
+        assert!(checksum_ok(&reply));
+    }
 }

@@ -259,7 +259,17 @@ impl Drop for HandleGuard {
 /// 所有 I/O 都是重叠 I/O + 事件超时，超时后 `CancelIoEx`，
 /// 保证上层调用不会被设备挂死。
 pub struct HidDevice {
+    /// 主句柄：写 Output Report、读 Feature Report 走它。
     handle: HANDLE,
+    /// 独立的读句柄。
+    ///
+    /// **读写必须分开**。厂商命令通道（0xFF02）上，用同一个读写句柄
+    /// 写完立刻读，设备回复会被吞掉 —— 实测 A75 的 `13 05 00` 在
+    /// 同句柄下 6/6 无回复，换成独立读句柄后立刻能收到。
+    ///
+    /// 打开失败时为 `INVALID_HANDLE_VALUE`，此时退回用主句柄读
+    /// （Feature-only 的设备不需要独立读句柄）。
+    read_handle: HANDLE,
     pub iface: HidInterface,
 }
 
@@ -275,8 +285,22 @@ impl HidDevice {
             // 输入缓冲开大一点，避免高频报文（鼠标）把队列打满后丢回复
             let _ = HidD_SetNumInputBuffers(handle, 64);
         }
+
+        // 只有需要收 Output Report 回复的设备（有 input_len）才另开读句柄。
+        // 用 access=0 打开：Windows 允许同一接口被多个句柄共享，
+        // 但读写权限分开才符合 HID 驱动的行为。
+        let read_handle = if iface.input_len > 0 {
+            match open_handle(&iface.path, false, false) {
+                Some(h) => h,
+                None => INVALID_HANDLE_VALUE,
+            }
+        } else {
+            INVALID_HANDLE_VALUE
+        };
+
         Ok(Self {
             handle,
+            read_handle,
             iface: iface.clone(),
         })
     }
@@ -295,7 +319,13 @@ impl HidDevice {
         if len == 0 {
             return None;
         }
-        read_overlapped(self.handle, len, timeout_ms)
+        // 优先用独立读句柄；没有则退回主句柄
+        let h = if self.read_handle != INVALID_HANDLE_VALUE {
+            self.read_handle
+        } else {
+            self.handle
+        };
+        read_overlapped(h, len, timeout_ms)
     }
 
     /// 读 Feature Report。
@@ -344,6 +374,9 @@ impl Drop for HidDevice {
     fn drop(&mut self) {
         unsafe {
             let _ = CloseHandle(self.handle);
+            if self.read_handle != INVALID_HANDLE_VALUE && self.read_handle != self.handle {
+                let _ = CloseHandle(self.read_handle);
+            }
         }
     }
 }
