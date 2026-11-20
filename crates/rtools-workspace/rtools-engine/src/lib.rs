@@ -1,3 +1,4 @@
+pub use rtools_battery as battery;
 pub mod db;
 pub mod mcp;
 pub mod rpc;

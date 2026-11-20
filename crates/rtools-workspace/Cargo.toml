@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "rtools-domain",
     "rtools-sync-proto",
+    "rtools-battery",
     "rtools-engine",
     "rtools-syncd",
 ]

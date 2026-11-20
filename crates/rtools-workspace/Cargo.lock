@@ -1930,6 +1930,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtools-battery"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tokio",
+ "windows",
+]
+
+[[package]]
 name = "rtools-domain"
 version = "0.2.0"
 dependencies = [
@@ -1950,6 +1962,7 @@ dependencies = [
  "rand 0.9.5",
  "reqwest 0.12.28",
  "rtodo-transfer-core",
+ "rtools-battery",
  "rtools-domain",
  "rtools-sync-proto",
  "rusqlite",

@@ -1,5 +1,5 @@
 import { AnimatePresence, Reorder } from "framer-motion";
-import { ArrowLeftRight, CalendarDays, Settings2 } from "lucide-react";
+import { ArrowLeftRight, BatteryFull, CalendarDays, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { invoke } from "@tauri-apps/api/core";
@@ -52,6 +52,12 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [hasUpdate, setHasUpdate] = useState(false);
   const quickAddRef = useRef<QuickAddHandle>(null);
+
+  const openBattery = useCallback(() => {
+    invoke("open_battery_widget").catch((e) =>
+      console.error("open_battery_widget failed:", e),
+    );
+  }, []);
 
   const openMonth = useCallback(() => {
     invoke("open_month_window").catch((e) =>
@@ -209,6 +215,13 @@ export default function App() {
             onClick={openMonth}
           >
             <CalendarDays size={14} />
+          </IconButton>
+          <IconButton
+            aria-label="设备电量"
+            title="无线设备电量"
+            onClick={openBattery}
+          >
+            <BatteryFull size={14} />
           </IconButton>
           <IconButton
             aria-label="互传"

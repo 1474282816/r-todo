@@ -1,0 +1,298 @@
+//! 罗技 HID++ 2.0 / 1.0。
+//!
+//! 报文格式（短报文 7 字节，走 `0xFF00/0x0001`）：
+//! ```text
+//! [0] = 0x10   Report ID
+//! [1] = 设备索引（1..6，接收器上第几台配对设备）
+//! [2] = 特性索引（0x00 表示 ROOT）
+//! [3] = (功能号 << 4) | 软件 ID
+//! [4..] = 参数
+//! ```
+//!
+//! 回复可能是短报文（7 字节，`0xFF00/0x0001`）或长报文（20 字节，`0xFF00/0x0002`），
+//! **两个接口都要监听**，只读短接口会漏掉大半回复。
+//!
+//! 错误回复以 `0x8F`（HID++ 2.0）或 `0xFF`（1.0）开头：
+//! ```text
+//! [0]=0x8F [1]=特性索引 [2]=功能字节 [3]=错误码
+//! ```
+//! 错误码 0x01 = 该通道按 1.0 解析（`INVALID_SUB_ID`），
+//! 0x08 = 该索引没有设备（`UNKNOWN_DEVICE`）。
+
+use anyhow::{anyhow, Result};
+
+use super::hid::{HidDevice, HidInterface};
+
+/// 软件 ID。避开 Logi Options+（0x0D）等已占用值。
+const SW_ID: u8 = 0x0B;
+
+const REPORT_SHORT: u8 = 0x10;
+
+/// 一次 HID++ 调用的结果。
+#[derive(Debug, Clone)]
+pub enum HidppReply {
+    Ok(Vec<u8>),
+    Err { feature: u8, function: u8, code: u8 },
+}
+
+impl HidppReply {
+    pub fn data(&self) -> Option<&[u8]> {
+        match self {
+            Self::Ok(d) => Some(d),
+            Self::Err { .. } => None,
+        }
+    }
+}
+
+pub struct HidppTransport {
+    short: HidDevice,
+    long: Option<HidDevice>,
+}
+
+impl HidppTransport {
+    /// 从枚举结果里挑出 HID++ 接口。
+    ///
+    /// 短报文接口是必需的；长报文接口缺失时仍能工作（只是收不到长回复）。
+    pub fn open(interfaces: &[HidInterface]) -> Result<Self> {
+        // 必须限定罗技 VID：主板/其它厂商也用 0xFF00 usage page，
+        // 只按 usage 找会抓到完全无关的设备（实测 Colorful MBoard 就是这个坑）
+        let short = interfaces
+            .iter()
+            .find(|i| i.vendor_id == 0x046D && i.usage_page == 0xFF00 && i.usage == 0x0001)
+            .ok_or_else(|| anyhow!("找不到罗技 HID++ 短报文接口"))?;
+        let long = interfaces
+            .iter()
+            .find(|i| i.vendor_id == 0x046D && i.usage_page == 0xFF00 && i.usage == 0x0002);
+
+        let short_dev = HidDevice::open(short, true)?;
+        // 长接口打不开不影响主流程 —— 某些接收器没有这个 collection
+        let long_dev = long.and_then(|i| HidDevice::open(i, true).ok());
+
+        Ok(Self {
+            short: short_dev,
+            long: long_dev,
+        })
+    }
+
+    /// 发一条请求并等回复。
+    ///
+    /// `body` 最多 5 字节：`[特性索引, (功能<<4)|SW, 参数...]`。
+    pub fn exchange(&self, device_index: u8, body: &[u8], timeout_ms: u32) -> Option<HidppReply> {
+        let mut msg = [0u8; 7];
+        msg[0] = REPORT_SHORT;
+        msg[1] = device_index;
+        let n = body.len().min(5);
+        msg[2..2 + n].copy_from_slice(&body[..n]);
+
+        self.short.drain(24);
+        if let Some(long) = &self.long {
+            long.drain(24);
+        }
+
+        if self.short.write_output(&msg, 500).is_err() {
+            return None;
+        }
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64);
+        while std::time::Instant::now() < deadline {
+            let remaining = deadline
+                .saturating_duration_since(std::time::Instant::now())
+                .as_millis()
+                .min(60) as u32;
+            let remaining = remaining.max(1);
+
+            // 先短后长：短回复更常见，长接口查询开销更大
+            if let Some(r) = self.short.read_input(remaining) {
+                if let Some(reply) = parse_reply(&r, device_index, body) {
+                    return Some(reply);
+                }
+            }
+            if let Some(long) = &self.long {
+                if let Some(r) = long.read_input(1) {
+                    if let Some(reply) = parse_reply(&r, device_index, body) {
+                        return Some(reply);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// 唤醒一台休眠设备。
+    ///
+    /// 罗技设备闲置几秒后进入休眠，此时所有请求都回 CONNECTION_REQUEST_FAILED
+    /// （0x04）。官方软件的做法是连续发几轮空请求，第一轮把设备唤醒，
+    /// 后续轮次才有真实回复 —— 单次 ping 失败不等于设备不存在。
+    pub fn wake(&self, device_index: u8) -> bool {
+        // 罗技设备休眠后第一次请求基本都会丢，要连发几轮：
+        // 第一轮把射频从低功耗叫醒，后面几轮才拿得到回复。
+        // 每轮之间留 120ms —— 太密会让接收器自己回 BUSY（0x07）。
+        for round in 0..6 {
+            if self
+                .exchange(device_index, &[0x00, (0x01 << 4) | SW_ID, 0x00, 0x00], 900)
+                .is_some()
+            {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(120 + round * 60));
+        }
+        false
+    }
+
+    /// 协议版本探测。返回 `Some(2.0)` / `Some(1.0)`；设备不可达返回 `None`。
+    ///
+    /// 接收器上未配对的索引会回 `0x08 UNKNOWN_DEVICE`，与"休眠"要区分开：
+    /// 前者是稳定错误，后者重试会成功。
+    pub fn ping(&self, device_index: u8) -> Option<f32> {
+        for _ in 0..3 {
+            let reply = self.exchange(device_index, &[0x00, (0x01 << 4) | SW_ID, 0x00, 0x00], 900)?;
+            match reply {
+                HidppReply::Err { code, .. } => {
+                    // 0x01 = 该索引是 HID++ 1.0 设备
+                    if code == 0x01 {
+                        return Some(1.0);
+                    }
+                    // 0x08 = 没设备，不必重试
+                    if code == 0x08 {
+                        return None;
+                    }
+                    continue;
+                }
+                HidppReply::Ok(data) if data.len() >= 2 => {
+                    return Some(data[0] as f32 + data[1] as f32 / 10.0);
+                }
+                _ => continue,
+            }
+        }
+        None
+    }
+
+    /// 查特性索引。设备不支持该特性返回 `None`（索引 0 也表示不支持）。
+    pub fn feature_index(&self, device_index: u8, feature_id: u16) -> Option<u8> {
+        let body = [
+            0x00,
+            SW_ID,
+            (feature_id >> 8) as u8,
+            (feature_id & 0xFF) as u8,
+        ];
+        let reply = self.exchange(device_index, &body, 900)?;
+        let data = reply.data()?;
+        // 回复 data 已剥掉"特性索引 + 功能字节"的回显头，
+        // 第一个字节就是特性索引本身（0 表示不支持该特性）。
+        // 这里踩过坑：曾经取 data[2]，结果读到的是后续参数字节。
+        data.first().copied().filter(|&idx| idx != 0)
+    }
+
+    /// 调用特性功能。
+    pub fn call(
+        &self,
+        device_index: u8,
+        feature_index: u8,
+        function: u8,
+        params: &[u8],
+        timeout_ms: u32,
+    ) -> Option<HidppReply> {
+        let mut body = vec![feature_index, (function << 4) | SW_ID];
+        body.extend_from_slice(&params[..params.len().min(3)]);
+        self.exchange(device_index, &body, timeout_ms)
+    }
+}
+
+/// 解析一条回复，只认属于本次请求的报文。
+fn parse_reply(report: &[u8], device_index: u8, request: &[u8]) -> Option<HidppReply> {
+    if report.len() < 4 {
+        return None;
+    }
+    // 设备索引回显；部分固件把索引按位取反回（0xFF ^ idx）
+    if report[1] != device_index && report[1] != (device_index ^ 0xFF) {
+        return None;
+    }
+    let payload = &report[2..];
+
+    // 错误回复：8F <feat> <func|sw> <code>
+    if (payload[0] == 0x8F || payload[0] == 0xFF) && payload.len() >= 4 {
+        return Some(HidppReply::Err {
+            feature: payload[1],
+            function: payload[2],
+            code: payload[3],
+        });
+    }
+
+    // 正常回复：前两字节回显 [特性索引, 功能字节]。
+    //
+    // **功能字节的低 4 位在回复里是 0，不是请求里带的 SW_ID** ——
+    // 直接比 payload[1] == request[1] 会永远不匹配，表现为"设备无回复"。
+    // 只比高 4 位（功能号）。
+    if payload.len() >= 2
+        && payload[0] == request[0]
+        && (payload[1] & 0xF0) == (request[1] & 0xF0)
+    {
+        return Some(HidppReply::Ok(payload[2..].to_vec()));
+    }
+
+    None
+}
+
+/// 把电压换算成电量百分比。
+///
+/// 锂电池放电曲线：4.2V 满，3.3V 空。G502 满电约 4.2V，关机保护点约 3.4V。
+/// 分段线性 —— 锂电中段（3.7–3.9V）掉得慢，两端掉得快，单条直线会明显偏。
+pub fn voltage_to_percent(mv: u16) -> Option<u8> {
+    // (毫伏, 百分比)，从满到空。
+    //
+    // 单节锂电（G502 这类）在轻载下放电平台很高：3.7V 仍有三成多电量，
+    // 而不是常见电池包标称的"3.7V ≈ 50%"。这条曲线按鼠标实际放电特性拟合，
+    // 中段刻意压平 —— 直接把 3.7V 报成 50% 会让人以为电量掉得飞快。
+    const CURVE: [(u16, u8); 8] = [
+        (4100, 100),
+        (4000, 85),
+        (3900, 66),
+        (3800, 45),
+        (3700, 28),
+        (3600, 14),
+        (3500, 5),
+        (3400, 0),
+    ];
+
+    if mv >= CURVE[0].0 {
+        return Some(100);
+    }
+    if mv <= CURVE[CURVE.len() - 1].0 {
+        return Some(0);
+    }
+
+    for w in CURVE.windows(2) {
+        let (hi_mv, hi_pct) = w[0];
+        let (lo_mv, lo_pct) = w[1];
+        if mv <= hi_mv && mv >= lo_mv {
+            let span_mv = (hi_mv - lo_mv) as f32;
+            let span_pct = (hi_pct - lo_pct) as f32;
+            let ratio = (mv - lo_mv) as f32 / span_mv;
+            return Some((lo_pct as f32 + span_pct * ratio).round() as u8);
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn voltage_curve_is_monotonic() {
+        let mut last = 0u8;
+        for mv in (3400..=4300).step_by(25) {
+            let pct = voltage_to_percent(mv).unwrap();
+            assert!(pct >= last, "{mv}mV 得到 {pct}% 比前一档 {last}% 还低");
+            last = pct;
+        }
+    }
+
+    #[test]
+    fn voltage_endpoints() {
+        assert_eq!(voltage_to_percent(4200), Some(100));
+        assert_eq!(voltage_to_percent(4500), Some(100));
+assert_eq!(voltage_to_percent(3400), Some(0));
+assert_eq!(voltage_to_percent(3000), Some(0));
+    }
+}

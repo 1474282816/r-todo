@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { TransferWindow } from "./features/transfer/TransferWindow";
 import { MonthWindow } from "./windows/MonthWindow";
+import { BatteryWidget } from "./windows/BatteryWidget";
 import "./styles.css";
 
 /**
@@ -25,6 +26,8 @@ if (view === "month") {
   Root = MonthWindow;
 } else if (view === "transfer") {
   Root = TransferWindow;
+} else if (view === "battery") {
+  Root = BatteryWidget;
 } else {
   Root = App;
 }

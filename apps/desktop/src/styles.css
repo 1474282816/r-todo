@@ -77,6 +77,12 @@ body[data-view="main"][data-backdrop="translucent"] #root {
  * 其他窗口（月视图等，有系统边框）：不透明背景 + 无圆角
  * 避免圆角尖露白
  */
+/* 电量挂件：跟主挂件同一套半透明底，但圆角靠组件自己画 */
+body[data-view="battery"] #root {
+  background: transparent;
+  border-radius: 12px;
+}
+
 body:not([data-view="main"]) #root {
   background: transparent;
 }

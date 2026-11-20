@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use rtools_domain::{Priority, TaskDraft, TaskPatch};
 use rtools_engine::{
+    battery::BatteryService,
     db, mcp,
     rpc::{read_frame, write_frame, Request, Response, RpcError},
     sync_client::SyncClient,
@@ -39,6 +40,7 @@ struct EngineState {
     data_dir: PathBuf,
     mcp: Mutex<Option<mcp::McpRuntime>>,
     transfer: Mutex<TransferRuntime>,
+    battery: BatteryService,
     events: broadcast::Sender<Value>,
 }
 
@@ -111,6 +113,7 @@ async fn serve(data_dir: PathBuf, db_path: PathBuf, pipe_name: String) -> Result
         data_dir,
         mcp: Mutex::new(None),
         transfer: Mutex::new(TransferRuntime::new()),
+        battery: BatteryService::new(),
         events,
     });
     {
@@ -122,6 +125,12 @@ async fn serve(data_dir: PathBuf, db_path: PathBuf, pipe_name: String) -> Result
                 Err(err) => tracing::warn!(%err, "MCP failed to start"),
             }
         }
+    }
+    // 电量：恢复用户标定过的设备档案（内置表在 battery::profile::builtin 里）
+    {
+        let conn = db::open(&db_path)?;
+        let saved = db::get_setting(&conn, "battery_profiles")?;
+        state.battery.load_custom(saved).await;
     }
     spawn_reminder_loop(db_path.clone(), event_sender.clone());
     spawn_sync_loop(db_path.clone(), event_sender.clone());
@@ -422,6 +431,38 @@ async fn dispatch(state: &EngineState, method: &str, payload: Value) -> Result<V
             let client = rpc_try!(SyncClient::new(&server_url).map(|c| c.with_token(token)));
             rpc_try!(client.revoke_device(&device_id, target).await);
             Ok(json!({"revoked":true}))
+        }
+        // ── 无线设备电量 ──
+        // 轮询在桌面端做（UI 决定多久刷一次），engine 只提供读取原语。
+        "battery.list" => {
+            let force = payload["rescan"].as_bool().unwrap_or(false);
+            let list = state.battery.list(force).await;
+            Ok(json!({"devices": list}))
+        }
+        "battery.refresh" => {
+            let list = state.battery.refresh().await;
+            let _ = state.events.send(json!({
+                "event": "battery.changed",
+                "payload": { "devices": list }
+            }));
+            Ok(json!({"devices": list}))
+        }
+        "battery.forget" => {
+            let id = payload["id"].as_str().unwrap_or_default();
+            state.battery.forget(id).await;
+            rpc_try!(persist_battery_profiles(state).await);
+            Ok(json!({"ok": true}))
+        }
+        "battery.calibrate" => {
+            let profile: rtools_engine::battery::profile::DeviceProfile =
+                rpc_try!(serde_json::from_value(payload["profile"].clone()));
+            rpc_try!(state.battery.calibrate(profile).await);
+            rpc_try!(persist_battery_profiles(state).await);
+            Ok(json!({"ok": true}))
+        }
+        "battery.probe" => {
+            let entries = state.battery.probe().await;
+            Ok(json!({"entries": entries}))
         }
         "settings.get" => {
             let conn = rpc_try!(db::open(&state.db_path));
@@ -986,6 +1027,17 @@ fn default_data_dir() -> Option<PathBuf> {
 fn default_pipe_name() -> String {
     let user = std::env::var("USERNAME").unwrap_or_else(|_| "user".into());
     format!(r"\\.\pipe\rtools-engine-{user}")
+}
+
+/// 把电量档案写回 settings 表。
+///
+/// 单独抽出来是因为 `battery.calibrate` / `battery.forget` 都要写一次，
+/// 而且失败不该让整个 RPC 报错 —— 内存里的档案已经生效了。
+async fn persist_battery_profiles(state: &EngineState) -> Result<()> {
+    let json = state.battery.dump_custom().await;
+    let conn = db::open(&state.db_path)?;
+    db::set_setting(&conn, "battery_profiles", &json)?;
+    Ok(())
 }
 
 fn spawn_reminder_loop(db_path: PathBuf, events: broadcast::Sender<Value>) {

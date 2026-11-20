@@ -1,5 +1,6 @@
 //! r-todo 桌面端 Tauri 入口
 
+mod battery_widget;
 mod db;
 mod desktop_embed;
 mod mcp_config;
@@ -163,6 +164,12 @@ pub fn run() {
             app.manage(transfer::TransferState::new());
             transfer::auto_start(app.handle());
 
+            // 电量挂件：托管状态 + 恢复设置 + 起轮询
+            let battery = std::sync::Arc::new(battery_widget::BatteryWidget::new());
+            battery_widget::restore_settings_blocking(app.handle(), &battery);
+            battery_widget::spawn_poll_loop(app.handle().clone(), battery.clone());
+            app.manage(battery);
+
             let _ = window;
             Ok(())
         })
@@ -178,6 +185,14 @@ pub fn run() {
             snap::get_snap_target,
             snap::get_collapse_target,
             month_window::open_month_window,
+            battery_widget::open_battery_widget,
+            battery_widget::close_battery_widget,
+            battery_widget::battery_list,
+            battery_widget::battery_refresh,
+            battery_widget::battery_probe,
+            battery_widget::battery_calibrate,
+            battery_widget::battery_forget,
+            battery_widget::battery_set_settings,
             mcp_config::get_mcp_status,
             mcp_config::get_mcp_client_templates,
             mcp_server::set_mcp_enabled,

@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2.0.0",
   "identifier": "default",
   "description": "r-todo 主窗口默认权限",
-  "windows": ["main", "month", "transfer"],
+  "windows": ["main", "month", "transfer", "battery"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
