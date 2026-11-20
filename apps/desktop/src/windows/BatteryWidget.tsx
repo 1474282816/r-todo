@@ -91,28 +91,29 @@ export function BatteryWidget() {
     }
   }, []);
 
-  // 窗口高度跟着内容实际高度走。
+  // 窗口高度跟着内容走，**只在设备数量变化时**调一次。
   //
-  // 不用"设备数 × 固定行高"来算：高 DPI 下实际行高和 CSS 里写的 px 不是 1:1，
-  // 硬编码的估算值总会差一截（要么底部留白，要么内容被切）。
-  // 这里直接量 DOM，量多少设多少。
-  const rootRef = useRef<HTMLDivElement>(null);
+  // 千万不能用 ResizeObserver 监听 #root：它是 h-full，高度永远等于窗口高度，
+  // 量出来的值再喂回 setSize 就是死循环 —— 表现是拖动边缘时窗口疯狂闪烁。
+  //
+  // 所以这里量的不是 #root，而是内部那个 `h-auto` 的内容容器
+  // （它的高度只由内容决定，和窗口尺寸无关）。宽度也不动，
+  // 免得和用户手动横向拉伸打架。
+  const contentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const el = rootRef.current;
+    const el = contentRef.current;
     if (!el) return;
 
-    const sync = () => {
-      const rect = el.getBoundingClientRect();
-      if (rect.height < 10) return;
+    // 等内容排完版再量，否则拿到的还是上一轮的高度
+    const timer = window.setTimeout(() => {
+      const height = el.offsetHeight;
+      if (height < 20) return;
       getCurrentWindow()
-        .setSize(new LogicalSize(rect.width, Math.ceil(rect.height)))
+        .setSize(new LogicalSize(260, Math.ceil(height) + 2))
         .catch(() => {});
-    };
+    }, 30);
 
-    sync();
-    const ro = new ResizeObserver(sync);
-    ro.observe(el);
-    return () => ro.disconnect();
+    return () => window.clearTimeout(timer);
   }, [devices.length]);
 
   useEffect(() => {
@@ -158,7 +159,6 @@ export function BatteryWidget() {
   };
   return (
     <div
-      ref={rootRef}
       // 背景交给 styles.css 的 `body[data-view="battery"] #root` 统一处理，
       // 这里**不要**再写 bg-* / backdrop-blur：
       // 透明窗口上 backdrop-filter 采样不到桌面，只会糊成一块死色，
@@ -167,6 +167,8 @@ export function BatteryWidget() {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {/* 内容容器：h-auto，高度只由内容决定，用来测量自然高度 */}
+      <div ref={contentRef} className="flex flex-col">
       {/* 标题栏：整条可拖 */}
       <div
         data-tauri-drag-region
@@ -204,7 +206,8 @@ export function BatteryWidget() {
       </div>
 
       {/* 设备列表 */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
+      {/* max-h 兜底：设备多到放不下时列表自己滚，别让窗口长出屏幕 */}
+      <div className="min-h-0 overflow-y-auto px-1.5 pb-1.5" style={{ maxHeight: 320 }}>
         {loading ? (
           <div className="px-2 py-3 text-center text-[11px] text-neutral-400">读取中…</div>
         ) : devices.length === 0 ? (
@@ -216,6 +219,7 @@ export function BatteryWidget() {
             <DeviceRow key={d.id} device={d} />
           ))
         )}
+      </div>
       </div>
     </div>
   );
