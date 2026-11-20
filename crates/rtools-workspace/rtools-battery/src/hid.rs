@@ -287,10 +287,12 @@ impl HidDevice {
         }
 
         // 只有需要收 Output Report 回复的设备（有 input_len）才另开读句柄。
-        // 用 access=0 打开：Windows 允许同一接口被多个句柄共享，
-        // 但读写权限分开才符合 HID 驱动的行为。
+        //
+        // **必须带 GENERIC_READ**（`read: true`）。用 `access=0` 打开只能读属性，
+        // `ReadFile` 读不到 Input Report —— 实测就是"写成功、永远无回复"，
+        // 而 Python 侧用 GENERIC_READ 开句柄能正常收到，差异全在这里。
         let read_handle = if iface.input_len > 0 {
-            match open_handle(&iface.path, false, false) {
+            match open_handle(&iface.path, true, false) {
                 Some(h) => h,
                 None => INVALID_HANDLE_VALUE,
             }

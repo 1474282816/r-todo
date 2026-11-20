@@ -161,10 +161,29 @@ impl HidppTransport {
     /// 未配对的索引会回 `0x08 UNKNOWN_DEVICE`（有回复但明确表示没设备），
     /// 休眠设备则完全不回。两者都判定为"当前不可用"，但前者可以永久跳过。
     pub fn probe_index(&self, device_index: u8) -> IndexProbe {
-        match self.exchange(device_index, &[0x00, (0x01 << 4) | SW_ID, 0x00, 0x00], 120) {
-            Some(HidppReply::Err { code: 0x08, .. }) => IndexProbe::Absent,
-            Some(_) => IndexProbe::Alive,
-            None => IndexProbe::Silent,
+        // 发两次。
+        //
+        // 实测刚打开句柄后第一次请求经常丢（设备/接收器要"热身"），
+        // 第二次才稳定回。只发一次会把醒着的设备误判成 Silent，
+        // 进而触发不必要的深度唤醒 —— 那是十几秒的代价。
+        //
+        // 没设备的索引会立刻回 UNKNOWN_DEVICE（约 30ms），
+        // 所以多试一次的开销可以忽略。
+        let mut saw_absent = false;
+        for _ in 0..2 {
+            match self.exchange(device_index, &[0x00, (0x01 << 4) | SW_ID, 0x00, 0x00], 250) {
+                Some(HidppReply::Err { code: 0x08, .. }) => {
+                    saw_absent = true;
+                    continue;
+                }
+                Some(_) => return IndexProbe::Alive,
+                None => continue,
+            }
+        }
+        if saw_absent {
+            IndexProbe::Absent
+        } else {
+            IndexProbe::Silent
         }
     }
 
