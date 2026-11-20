@@ -20,7 +20,7 @@ use windows::Win32::Devices::DeviceAndDriverInstallation::{
 };
 use windows::Win32::Devices::HumanInterfaceDevice::{
     HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetFeature, HidD_GetManufacturerString,
-    HidD_GetPreparsedData, HidD_GetProductString, HidD_GetSerialNumberString, HidD_SetFeature,
+    HidD_GetPreparsedData, HidD_GetProductString, HidD_GetSerialNumberString,
     HidD_SetNumInputBuffers, HidP_GetCaps, GUID_DEVINTERFACE_HID, HIDD_ATTRIBUTES, HIDP_CAPS,
     HIDP_STATUS_SUCCESS, PHIDP_PREPARSED_DATA,
 };
@@ -313,12 +313,21 @@ impl HidDevice {
         Some(buf)
     }
 
-    pub fn set_feature(&self, report: &[u8]) -> bool {
-        let len = (self.iface.feature_len as usize).max(report.len());
-        let mut buf = vec![0u8; len];
-        let n = report.len().min(len);
-        buf[..n].copy_from_slice(&report[..n]);
-        unsafe { HidD_SetFeature(self.handle, buf.as_ptr() as *const _, len as u32) }
+    /// 写 Feature Report。
+    ///
+    /// **本模块不提供这个能力，故意留空。**
+    ///
+    /// 厂商的 Feature 通道（0xFF04 这类）既能读也能写，写进去的是配置命令：
+    /// 灯效、回报率、休眠、按键映射，以及各家私有的"锁定/复位"类指令。
+    /// 一旦按"扫一遍看哪个 RID 有反应"的思路盲写，就可能把设备写进
+    /// 固件不处理任何输入的异常态 —— 实测在 Leobog A75 上踩过：
+    /// 接收器仍然在线、Windows 也报告设备正常，但键盘 MCU 不再产生按键事件，
+    /// 只能拔插接收器 / 断电复位才能恢复。
+    ///
+    /// 读电量只需要 `get_feature`。真要支持"改配置"，必须先把命令语义
+    /// 从官方驱动里逆向清楚、逐条验证，而不是靠枚举试出来。
+    pub fn set_feature_disabled(&self, _report: &[u8]) -> bool {
+        false
     }
 
     /// 把输入队列里积压的报文读干净，避免上一条命令的迟到回复被当成本次结果。
