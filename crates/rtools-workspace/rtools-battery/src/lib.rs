@@ -92,6 +92,15 @@ pub struct BatteryService {
     custom: Mutex<HashMap<String, Profile>>,
     /// 上次扫描时间，避免每次 RPC 都枚举一遍系统 HID。
     last_scan: Mutex<Option<(Instant, Vec<Profile>)>>,
+    /// 刷新互斥锁。
+    ///
+    /// HID 是独占资源：两个 refresh 并发时会同时对同一接口 `CreateFileW`，
+    /// 然后一方的回复被另一方 `ReadFile` 读走 —— `exchange` 只按设备索引过滤，
+    /// 分不清是哪次请求的回复，结果是读到旧值或一直收不到。
+    ///
+    /// 触发场景真实存在：轮询定时器、用户点刷新按钮、前端挂载时主动刷一次，
+    /// 三者可能撞在一起。
+    refresh_lock: tokio::sync::Mutex<()>,
 }
 
 impl Default for BatteryService {
@@ -106,6 +115,7 @@ impl BatteryService {
             cache: Mutex::new(HashMap::new()),
             custom: Mutex::new(HashMap::new()),
             last_scan: Mutex::new(None),
+            refresh_lock: tokio::sync::Mutex::new(()),
         }
     }
 
@@ -116,6 +126,24 @@ impl BatteryService {
             return;
         };
         *self.custom.lock().await = map;
+    }
+
+    /// 同步版：直接塞入已解析的档案表。
+    ///
+    /// 给 Tauri 的 `setup` 用。那里跑在 tokio 运行时线程上，
+    /// 不能用 `blocking_lock`（会 panic："Cannot block the current thread
+    /// from within a runtime"），也不能 `block_on` 异步任务（会死锁）。
+    ///
+    /// 所以用 `try_lock`：启动早期没有并发访问，几乎必然成功；
+    /// 万一失败就放弃这次恢复（下次标定时会重新写盘，不会丢数据）。
+    pub fn load_custom_sync(&self, map: HashMap<String, Profile>) -> bool {
+        match self.custom.try_lock() {
+            Ok(mut guard) => {
+                *guard = map;
+                true
+            }
+            Err(_) => false,
+        }
     }
 
     /// 导出用户档案，供写回持久化。
@@ -240,6 +268,9 @@ impl BatteryService {
     ///
     /// HID 操作是阻塞的（同步 Win32 调用），放进 `spawn_blocking` 避免卡住 tokio 运行时。
     pub async fn refresh(&self) -> Vec<DeviceReading> {
+        // 串行化：整个读硬件过程独占，避免并发争抢同一 HID 接口
+        let _guard = self.refresh_lock.lock().await;
+
         let profiles = self.scan(true).await;
         let interfaces = hid::enumerate();
 

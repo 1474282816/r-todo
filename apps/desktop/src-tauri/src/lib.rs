@@ -167,6 +167,7 @@ pub fn run() {
             // 电量挂件：托管状态 + 恢复设置 + 起轮询
             let battery = std::sync::Arc::new(battery_widget::BatteryWidget::new());
             battery_widget::restore_settings_blocking(app.handle(), &battery);
+            battery_widget::restore_profiles_blocking(app.handle(), &battery);
             battery_widget::spawn_poll_loop(app.handle().clone(), battery.clone());
             app.manage(battery);
 

@@ -90,6 +90,21 @@ export function setWindowOpacity(alpha: number): void {
   const v = Math.min(1, Math.max(MIN_OPACITY, alpha));
   localStorage.setItem(OPACITY_KEY, String(v));
   document.body.style.setProperty("--win-alpha", String(v));
+  // 拖滑杆会高频触发，节流后再广播给副窗口，否则事件刷屏
+  scheduleOpacityBroadcast();
+}
+
+let opacityBroadcastTimer: number | null = null;
+
+/** 节流广播透明度变化（100ms 合并一次）。 */
+function scheduleOpacityBroadcast(): void {
+  if (opacityBroadcastTimer !== null) return;
+  opacityBroadcastTimer = window.setTimeout(() => {
+    opacityBroadcastTimer = null;
+    // 用当前实际值而不是闭包里的旧值：拖动过程中 alpha 一直在变
+    const current = getWindowOpacity();
+    broadcastVisual(getEffectiveBackdrop(), current);
+  }, 100);
 }
 
 /** 安全调用：命令不存在（非 Windows）时静默忽略 */
@@ -112,13 +127,19 @@ async function safeInvoke(cmd: string, args: Record<string, unknown>): Promise<v
  */
 async function refreshWindowVisual(): Promise<void> {
   const kind = getBackdropPreference();
+  const alpha = getWindowOpacity();
   // 透明度是全局的（半透明档全权用它，模糊档作为叠加底色的参考）
-  document.body.style.setProperty("--win-alpha", String(getWindowOpacity()));
+  document.body.style.setProperty("--win-alpha", String(alpha));
+
+  // 实际生效的材质。降级时它会和 `kind` 分叉，广播必须用它 ——
+  // 否则副窗口按"mica"渲染却没有 --wp-mica，只剩一层薄底，几乎全透明。
+  let effective: Backdrop = kind;
 
   if (kind === "none") {
     delete document.body.dataset.backdrop;
     document.body.style.removeProperty("--wp-mica");
     await safeInvoke("set_window_backdrop", { backdrop: "none" });
+    broadcastVisual(effective, alpha);
     return;
   }
 
@@ -129,6 +150,7 @@ async function refreshWindowVisual(): Promise<void> {
   // 半透明档：不读壁纸、不跑模糊，CSS 单图层搞定
   if (kind === "translucent") {
     document.body.style.removeProperty("--wp-mica");
+    broadcastVisual(effective, alpha);
     return;
   }
 
@@ -141,6 +163,7 @@ async function refreshWindowVisual(): Promise<void> {
     // 壁纸读取失败（纯色背景等）：自动降级为半透明
     document.body.dataset.backdrop = "translucent";
     document.body.style.removeProperty("--wp-mica");
+    effective = "translucent";
   }
 
   // 把最终生效的材质广播给其它窗口。
@@ -149,7 +172,7 @@ async function refreshWindowVisual(): Promise<void> {
   // （WebView2 各环境隔离），电量挂件自己读 BACKDROP_KEY 只会拿到默认值
   // translucent —— 表现出来就是"两个窗口材质不一样"。
   // 主窗口是唯一决定材质的窗口（设置面板在它里面），由它推送、其余窗口跟随。
-  broadcastVisual(kind, getWindowOpacity());
+  broadcastVisual(effective, alpha);
 }
 
 /** 当前生效的材质状态，跨窗口共享用。 */
@@ -158,6 +181,18 @@ interface VisualState {
   /** 已算好的壁纸模糊图 data URI；`translucent` / `none` 时为 null。 */
   mica: string | null;
   alpha: number;
+}
+
+/**
+ * 当前**实际生效**的材质档位。
+ *
+ * 和 `getBackdropPreference()` 的区别：后者是用户选的，前者是真正渲染出来的。
+ * 壁纸读取失败时偏好仍是 `mica`，但实际已降级成 `translucent` —— 广播必须用实际值。
+ */
+function getEffectiveBackdrop(): Backdrop {
+  const applied = document.body.dataset.backdrop as Backdrop | undefined;
+  if (!applied) return "none";
+  return applied;
 }
 
 /**

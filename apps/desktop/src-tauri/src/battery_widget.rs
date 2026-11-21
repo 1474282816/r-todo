@@ -175,7 +175,7 @@ pub async fn battery_calibrate(
         .await
         .map_err(|e| e.to_string())?;
     persist(&app, &widget).await;
-    // 窗口刚建出来时还没读设备，先按 1 行高度起，前端拿到数据后再调 fit
+    persist_profiles(&app, &widget).await;
     Ok(())
 }
 
@@ -188,6 +188,7 @@ pub async fn battery_forget(
 ) -> Result<(), String> {
     widget.service.forget(&id).await;
     persist(&app, &widget).await;
+    persist_profiles(&app, &widget).await;
     Ok(())
 }
 
@@ -250,17 +251,23 @@ async fn persist(app: &AppHandle, widget: &BatteryWidget) {
     }
 }
 
-/// 启动时恢复设置。
-pub async fn restore_settings(app: &AppHandle, widget: &BatteryWidget) {
+/// 把用户标定的设备档案写盘。
+///
+/// 和 `persist` 分开：档案是 `HashMap<id, DeviceProfile>`，结构和挂件设置不同，
+/// 混在一个文件里以后加字段容易互相干扰。
+///
+/// 不写盘的话 `BatteryService::custom` 只是内存里的 HashMap，
+/// 用户标定完新设备、重启就没了 —— 得重新标一次。
+async fn persist_profiles(app: &AppHandle, widget: &BatteryWidget) {
     let Ok(dir) = app.path().app_config_dir() else {
         return;
     };
-    let path = dir.join("battery-widget.json");
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return;
-    };
-    if let Ok(settings) = serde_json::from_str::<WidgetSettings>(&text) {
-        *widget.settings.lock().await = settings;
+    let _ = std::fs::create_dir_all(&dir);
+    let json = widget.service.dump_custom().await;
+    let path = dir.join("battery-profiles.json");
+    let tmp = path.with_extension("json.tmp");
+    if std::fs::write(&tmp, json).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
     }
 }
 
@@ -279,6 +286,33 @@ pub fn restore_settings_blocking(app: &AppHandle, widget: &BatteryWidget) {
     if let Ok(settings) = serde_json::from_str::<WidgetSettings>(&text) {
         if let Ok(mut guard) = widget.settings.try_lock() {
             *guard = settings;
+        }
+    }
+}
+
+/// 启动时恢复用户标定的设备档案。
+///
+/// 读文件是同步的（和 `restore_settings_blocking` 同理，避免在 setup 里 block_on），
+/// 解析出来的 JSON 直接喂给 `load_custom` —— 它内部只是塞进 Mutex，
+/// 用 `blocking_lock` 不会和 tokio 运行时打架。
+pub fn restore_profiles_blocking(app: &AppHandle, widget: &BatteryWidget) {
+    let Ok(dir) = app.path().app_config_dir() else {
+        return;
+    };
+    let path = dir.join("battery-profiles.json");
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return;
+    };
+    // 文件不存在或内容损坏都当作"没有档案"，不报错
+    if text.trim().is_empty() || text.trim() == "{}" {
+        return;
+    }
+    if let Ok(map) =
+        serde_json::from_str::<std::collections::HashMap<String, rtools_battery::DeviceProfile>>(&text)
+    {
+        if !widget.service.load_custom_sync(map) {
+            // 启动早期不该有竞争；真撞上了就跳过，下次标定时会重新写盘
+            eprintln!("[battery] 恢复设备档案失败（锁被占用），跳过");
         }
     }
 }
