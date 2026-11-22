@@ -88,9 +88,11 @@ pnpm dev:mobile
 入口：主窗口右上电池图标 / 托盘菜单。
 
 - 已支持：罗技 G502（HID++ 2.0）、Leobog A75、迈从（Compx 厂商 Feature Report）、通用 HID 电量字段
-- 充电状态：G502 读标志位 `0x80`；A75 只在插拔线窗口期能问到，属于尽力而为
+- 充电状态：G502 读报文标志位 `0x80`；A75/迈从靠设备插拔线时主动推的状态帧（位掩码 `0x10`），
+  由常驻只读线程守着，不写任何厂商命令
 - 源码：核心 `crates/rtools-workspace/rtools-battery`，窗口 `apps/desktop/src/windows/BatteryWidget.tsx`
 - 新增设备：在 `crates/rtools-workspace/rtools-battery/src/profile.rs` 加一条设备档案即可，ID 按产品名而非 PID（罗技插线会换 PID）
+- 抓报文：`cargo run -p rtools-battery --example a75_watch -- 300`（只读，30 秒内插拔一次线就能看到状态帧）
 
 ## 待办数据位置
 

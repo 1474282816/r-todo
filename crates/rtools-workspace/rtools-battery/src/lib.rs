@@ -92,6 +92,15 @@ pub struct BatteryService {
     custom: Mutex<HashMap<String, Profile>>,
     /// 上次扫描时间，避免每次 RPC 都枚举一遍系统 HID。
     last_scan: Mutex<Option<(Instant, Vec<Profile>)>>,
+    /// 被动监听到的充电状态（按设备 id）。
+    ///
+    /// 这些设备不会稳定应答查询，只在插拔线那一刻主动推一次报文，
+    /// 轮询（默认 60 秒一次）几乎必然错过，所以单独开一条常驻线程守着。
+    charge: std::sync::Arc<std::sync::Mutex<HashMap<String, ChargeState>>>,
+    /// 监听线程是否已启动（幂等）。
+    charge_listener: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// 监听到状态变化时置位，供上层立刻刷新界面。
+    charge_changed: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// 刷新互斥锁。
     ///
     /// HID 是独占资源：两个 refresh 并发时会同时对同一接口 `CreateFileW`，
@@ -115,8 +124,50 @@ impl BatteryService {
             cache: Mutex::new(HashMap::new()),
             custom: Mutex::new(HashMap::new()),
             last_scan: Mutex::new(None),
+            charge: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
+            charge_listener: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            charge_changed: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             refresh_lock: tokio::sync::Mutex::new(()),
         }
+    }
+
+    /// 启动充电状态被动监听（幂等，只在第一次真正创建线程）。
+    pub fn ensure_charge_listener(&self, profiles: &[Profile]) {
+        use std::sync::atomic::Ordering;
+        if self.charge_listener.swap(true, Ordering::SeqCst) {
+            return;
+        }
+
+        let targets: Vec<(String, u16, u16, profile::ChargeQuery)> = profiles
+            .iter()
+            .filter_map(|p| {
+                let q = p.vendor.as_ref()?.charge_query.clone()?;
+                Some((p.id.clone(), p.vendor_id, p.product_id, q))
+            })
+            .collect();
+        if targets.is_empty() {
+            return;
+        }
+
+        let charge = self.charge.clone();
+        let changed = self.charge_changed.clone();
+        let _ = std::thread::Builder::new()
+            .name("rtools-battery-charge".into())
+            .spawn(move || charge_listener_loop(targets, charge, changed));
+    }
+
+    /// 取走"状态有变化"标记。上层拿它决定要不要立刻刷新界面。
+    pub fn take_charge_change(&self) -> bool {
+        self.charge_changed
+            .swap(false, std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// 当前已知的充电状态（还没监听到就返回 `None`）。
+    pub fn charge_state(&self, id: &str) -> Option<ChargeState> {
+        self.charge
+            .lock()
+            .ok()
+            .and_then(|m| m.get(id).copied())
     }
 
     /// 从持久化的 JSON 恢复用户标定档案。
@@ -298,14 +349,24 @@ impl BatteryService {
         let _guard = self.refresh_lock.lock().await;
 
         let profiles = self.scan(true).await;
+        // 插拔线那一刻设备才推状态报文，靠轮询抓不到 —— 先把常驻监听起起来
+        self.ensure_charge_listener(&profiles);
         let interfaces = hid::enumerate();
+
+        // 监听到的状态优先于 Feature 报文里的状态：
+        // A75 的 Feature 报文压根没有充电位。
+        let known: HashMap<String, ChargeState> = profiles
+            .iter()
+            .filter_map(|p| self.charge_state(&p.id).map(|s| (p.id.clone(), s)))
+            .collect();
 
         let mut readings = Vec::with_capacity(profiles.len());
         for profile in profiles {
             let ifaces = interfaces.clone();
             let fallback = profile.clone();
+            let known_state = known.get(&profile.id).copied();
             let reading = tokio::task::spawn_blocking(move || {
-                read_blocking(&profile, &ifaces)
+                read_blocking(&profile, &ifaces, known_state)
                     .unwrap_or_else(|err| DeviceReading::placeholder(&fallback, Some(err.to_string())))
             })
             .await
@@ -317,7 +378,7 @@ impl BatteryService {
         let mut cache = self.cache.lock().await;
         let mut merged_list = Vec::with_capacity(readings.len());
         for reading in readings {
-            let merged = match cache.get(&reading.id) {
+            let mut merged = match cache.get(&reading.id) {
                 Some(prev) if reading.percent.is_none() && prev.percent.is_some() => {
                     let mut m = reading.clone();
                     m.percent = prev.percent;
@@ -328,6 +389,10 @@ impl BatteryService {
                 }
                 _ => reading.clone(),
             };
+            // 监听线程的状态永远以它为准（读失败时也不会退回旧值）
+            if let Some(state) = known.get(&merged.id).copied() {
+                merged.state = state;
+            }
             if !merged.id.is_empty() {
                 cache.insert(merged.id.clone(), merged.clone());
             }
@@ -361,6 +426,78 @@ impl BatteryService {
     }
 }
 
+/// 充电状态监听线程体。
+///
+/// 只读地守着设备的 0xFF02 接口：设备插拔线那一刻主动推一帧，其余时间完全安静。
+/// 所以这里是"阻塞等事件"，不做任何轮询写入 —— 盲写曾经把键盘 MCU 写死过。
+fn charge_listener_loop(
+    targets: Vec<(String, u16, u16, profile::ChargeQuery)>,
+    charge: std::sync::Arc<std::sync::Mutex<HashMap<String, ChargeState>>>,
+    changed: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) {
+    struct Active {
+        id: String,
+        spec: profile::ChargeQuery,
+        device: hid::HidDevice,
+        /// 连续空读次数，用来判断通道是不是已经没了。
+        idle: u32,
+    }
+
+    let mut active: Vec<Active> = Vec::new();
+
+    loop {
+        // 补齐还没打开的通道（设备可能是应用启动之后才插上的）
+        if active.len() < targets.len() {
+            let interfaces = hid::enumerate();
+            for (id, vid, pid, spec) in &targets {
+                if active.iter().any(|a| a.id == *id) {
+                    continue;
+                }
+                let Some(iface) = interfaces.iter().find(|i| {
+                    i.vendor_id == *vid
+                        && i.product_id == *pid
+                        && i.usage_page == spec.usage_page
+                        && i.input_len > 0
+                }) else {
+                    continue;
+                };
+                if let Ok(device) = hid::HidDevice::open(iface, false) {
+                    active.push(Active {
+                        id: id.clone(),
+                        spec: spec.clone(),
+                        device,
+                        idle: 0,
+                    });
+                }
+            }
+        }
+
+        for a in active.iter_mut() {
+            match a.device.read_input(150) {
+                Some(frame) => {
+                    a.idle = 0;
+                    if let Some(state) = vendor::parse_charge_event(&frame, &a.spec) {
+                        let mut map = charge.lock().unwrap_or_else(|e| e.into_inner());
+                        if map.get(&a.id) != Some(&state) {
+                            map.insert(a.id.clone(), state);
+                            changed.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
+                    }
+                }
+                None => a.idle += 1,
+            }
+        }
+
+        // 约 30 秒没数据：可能设备被拔走或换了 PID，丢掉句柄重新枚举
+        if active.iter().any(|a| a.idle > 200) {
+            active.retain(|a| a.idle <= 200);
+        }
+        if active.is_empty() {
+            std::thread::sleep(Duration::from_secs(2));
+        }
+    }
+}
+
 fn fallback_for(_interfaces: &[hid::HidInterface]) -> Profile {
     // spawn_blocking 崩了（线程池被销毁等极端情况）时用的兜底档案。
     // 正常路径走不到这里。
@@ -377,15 +514,23 @@ fn fallback_for(_interfaces: &[hid::HidInterface]) -> Profile {
     }
 }
 
-fn read_blocking(profile: &Profile, interfaces: &[hid::HidInterface]) -> Result<DeviceReading> {
+fn read_blocking(
+    profile: &Profile,
+    interfaces: &[hid::HidInterface],
+    known: Option<ChargeState>,
+) -> Result<DeviceReading> {
     match profile.source {
         BatterySource::LogitechHidpp => read_logitech(profile, interfaces),
-        BatterySource::VendorFeature => read_vendor(profile, interfaces),
+        BatterySource::VendorFeature => read_vendor(profile, interfaces, known),
         BatterySource::StandardHid => read_standard(profile, interfaces),
     }
 }
 
-fn read_vendor(profile: &Profile, interfaces: &[hid::HidInterface]) -> Result<DeviceReading> {
+fn read_vendor(
+    profile: &Profile,
+    interfaces: &[hid::HidInterface],
+    known: Option<ChargeState>,
+) -> Result<DeviceReading> {
     let spec = profile
         .vendor
         .as_ref()
@@ -398,7 +543,8 @@ fn read_vendor(profile: &Profile, interfaces: &[hid::HidInterface]) -> Result<De
         kind: profile.kind.as_str().to_string(),
         transport: profile.transport.clone(),
         percent: reading.percent,
-        state: reading.state,
+        // 被动监听拿到的状态优先；没有就以报文里的为准（迈从这类写在 [2]）
+        state: known.unwrap_or(reading.state),
         online: true,
         voltage_mv: None,
         source: format!("Feature 0x{:02X}", spec.report_id),

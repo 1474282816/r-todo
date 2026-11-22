@@ -1,7 +1,7 @@
 {
   "name": "rtools",
   "private": true,
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "个人跨端工具集：Windows 待办 + 局域网互传 + Android 待办 + Rust 自托管同步服务",
   "scripts": {
     "dev:desktop": "pnpm --filter desktop tauri dev",

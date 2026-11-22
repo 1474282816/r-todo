@@ -99,11 +99,11 @@ pub struct VendorSpec {
     /// 读到 0 时是否视为无效（多数设备 0 表示"未就绪"而不是真的没电）。
     #[serde(default)]
     pub zero_means_unknown: bool,
-    /// 充电状态查询（走 Output Report 命令通道）。
+    /// 充电状态报文解析参数（走 0xFF02 的输入报文，只读）。
     ///
-    /// 有些设备的电量在 Feature Report 里，充电状态却只在命令通道的回复中，
+    /// 有些设备的电量在 Feature Report 里，充电状态却只在 0xFF02 的报文里，
     /// 两条路得分开读。Leobog A75 就是这种：`0xFF04` 读到电量 95%，
-    /// 但 `[4]` 字节插拔电都不变，真正的充电位在 `0xFF02` 的回复帧里。
+    /// 但 `[4]` 字节插拔电都不变，真正的充电位在 `0xFF02` 的推送帧里。
     #[serde(default)]
     pub charge_query: Option<ChargeQuery>,
 }
@@ -112,43 +112,29 @@ fn one() -> f32 {
     1.0
 }
 
-/// 通过 Output Report 命令查询充电状态的参数。
+/// 充电状态报文的解析参数（Compx 方案）。
 ///
-/// 命令帧格式（Compx 方案实测）：
-/// ```text
-/// [0]=0x13 Report ID  [1]=cmd  [2]=arg  ...  [19]=sum(byte[0..19]) & 0xFF
-/// ```
-/// 校验和不对的帧会被设备**静默丢弃**，看起来就像"设备不回复"。
-///
-/// 回复帧的 Report ID 与请求不同（A75 请求 0x13、回复 0x0A），要分开配。
+/// 这些设备**不会稳定应答查询** —— 插拔线那一刻自己往 0xFF02 推一帧就完事，
+/// 静置后怎么问都沉默（实测 0/8、0/12）。所以这里只描述"怎么读懂它推的帧"，
+/// 不含任何写命令参数：往厂商通道盲写曾经把键盘 MCU 写死过。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChargeQuery {
-    /// 走哪个 usage page 的 Output 接口（A75 是 0xFF02）。
+    /// 从哪个 usage page 的输入接口收报文（A75 是 0xFF02）。
     pub usage_page: u16,
-    /// 命令字节（A75 是 0x05）。
-    pub command: u8,
-    /// 参数字节（A75 是 0x00）。
-    #[serde(default)]
-    pub argument: u8,
-    /// 回复帧的 Report ID（A75 是 0x0A）。
+    /// 状态帧的第 1 字节（A75 是 0x0A）。
     pub response_id: u8,
-    /// 充电状态字节在回复帧里的下标（A75 是 7）。
+    /// 充电状态字节在帧里的下标（A75 是 7）。
     pub state_index: usize,
-    /// 状态字节取值 → 充电状态。
+    /// 状态字节的**充电位**：与这个掩码相与非 0 就是充电中。
+    ///
+    /// A75 实测：`0x11` 充电、`0x01` 放电。两个值都带 `0x01` 位，
+    /// 所以不能按"取值对表"匹配 —— 表里写 1 和 16，`0x11`(=17) 会漏成未知，
+    /// 界面上就永远不显示"充电中"。必须按位判断。
+    #[serde(default)]
+    pub charging_bit: Option<u8>,
+    /// 没有 `charging_bit` 的老式设备用取值表。
+    #[serde(default)]
     pub state_map: std::collections::BTreeMap<String, ChargeState>,
-    /// 重试次数。
-    ///
-    /// 实测这条通道**不是稳定可用**的：它只在某些时段响应（刚插拔线、
-    /// 刚上电后的窗口期），其余时间完全沉默。所以这里的目的不是"提高成功率"，
-    /// 而是**快速放弃** —— 次数和超时都压低，保证查不到时不会拖慢整体刷新。
-    ///
-    /// 2 次 × 400ms ≈ 1 秒封顶，在 60 秒轮询周期里可以忽略。
-    #[serde(default = "default_retries")]
-    pub retries: u32,
-}
-
-fn default_retries() -> u32 {
-    2
 }
 
 /// 内置设备表。
@@ -175,19 +161,17 @@ pub fn builtin() -> Vec<DeviceProfile> {
         // ── Leobog A75（厂商 "CX" = Compx 方案，与迈从同芯片）──
         // 电量：0xFF04 / RID 0x06，声明长度 8 但电量在第 9 字节 [8]，稳定读 95。
         //
-        // 充电：**读不到，属于尽力而为**。
+        // 充电：靠被动监听，不写命令。
         //
-        // 报文里没有充电位（[4] 插拔电都是 DF，90 秒连续采样纹丝不动）。
-        // 状态位只出现在 0xFF02 命令通道：发 `13 05 00` → 回
-        // `13 0A 01 00 04 05 64 XX`，XX = 0x10 充电 / 0x01 放电。
+        // Feature 报文里没有充电位（[4] 插拔电都是 DF，90 秒采样纹丝不动）。
+        // 插拔线那一刻设备会主动往 0xFF02 推帧（三轮抓包实测）：
+        //   插线  13 0A 01 00 04 02 01 …   ← 0x02 组，[6]=1 插着线
+        //         13 0A 01 00 04 05 64 11 … ← 0x05 组，[7]=0x11（带 0x10 充电位）
+        //   拔线  13 0A 01 00 04 02 00 …   ← [6]=0
+        //         13 0A 01 00 04 05 64 01 … ← [7]=0x01（没有充电位）
         //
-        // 但这个命令**不是稳定可用**的：
-        //   刚插拔线后的窗口期  6/12、10/12、4/5 有回复
-        //   静置一段时间后      0/8、0/12 完全沉默
-        //   同期 13 07 01       始终 8/8（通道没坏，是这个命令不响应）
-        //
-        // 所以留着 charge_query，能读到就显示"充电中"，读不到就显示未知。
-        // 不要为了它加重试次数 —— 拖慢轮询不值当。
+        // 之前记的"查询成功率不稳"是把设备主动推的帧当成了查询回复。
+        // 现在改成常驻被动监听（`lib.rs` 的 charge_listener_loop），一个字节都不写。
         DeviceProfile {
             id: "vendor:3554:FA09".into(),
             vendor_id: 0x3554,
@@ -207,17 +191,10 @@ pub fn builtin() -> Vec<DeviceProfile> {
                 zero_means_unknown: true,
                 charge_query: Some(ChargeQuery {
                     usage_page: 0xFF02,
-                    command: 0x05,
-                    argument: 0x00,
                     response_id: 0x0A,
                     state_index: 7,
-                    state_map: [
-                        ("1".to_string(), ChargeState::Discharging),
-                        ("16".to_string(), ChargeState::Charging),
-                    ]
-                    .into_iter()
-                    .collect(),
-                    retries: 2,
+                    charging_bit: Some(0x10),
+                    state_map: Default::default(),
                 }),
             }),
             calibrated: false,

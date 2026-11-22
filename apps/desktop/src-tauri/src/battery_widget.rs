@@ -325,23 +325,30 @@ pub fn spawn_poll_loop(app: AppHandle, widget: Arc<BatteryWidget>) {
         // 启动后先等 3 秒：让 HID 栈稳定下来，避免和应用启动抢设备
         tokio::time::sleep(Duration::from_secs(3)).await;
 
+        let mut last = Instant::now() - Duration::from_secs(1);
         loop {
             let interval = {
                 let s = widget.settings.lock().await;
                 s.interval_secs
             };
 
-            if app.get_webview_window(WINDOW_LABEL).is_some() {
+            // 插拔线是瞬时的，等满 60 秒才更新太迟钝。监听线程抓到状态变化
+            // 会置位，这里 2 秒看到一次就直接刷一轮。
+            let charge_changed = widget.service.take_charge_change();
+            let due = last.elapsed() >= Duration::from_secs(interval);
+
+            if (charge_changed || due) && app.get_webview_window(WINDOW_LABEL).is_some() {
                 let devices = widget.service.refresh().await;
+                last = Instant::now();
                 let settings = widget.settings.lock().await.clone();
-    let visible = filter_hidden(devices, &settings.hidden);
+                let visible = filter_hidden(devices, &settings.hidden);
                 let _ = app.emit(
                     "battery-changed",
                     serde_json::json!({ "devices": visible }),
                 );
             }
 
-            tokio::time::sleep(Duration::from_secs(interval)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
         }
     });
 }
