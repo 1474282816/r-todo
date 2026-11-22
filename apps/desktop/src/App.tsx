@@ -33,7 +33,7 @@ import type { Task } from "./lib/types";
 import { silentCheckUpdate, subscribeUpdateStatus } from "./lib/updater";
 
 /**
- * r-todo 桌面端主界面
+ * RTools 桌面端主界面
  *
  * 结构：
  *   [顶部拖动条 + 设置按钮]

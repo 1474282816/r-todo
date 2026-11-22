@@ -1,12 +1,12 @@
 [package]
-name = "r-todo-desktop"
-version = "0.3.2"
-description = "r-todo Windows 桌面端"
+name = "rtools-desktop"
+version = "0.3.4"
+description = "RTools Windows 桌面端"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "r_todo_desktop_lib"
+name = "rtools_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 # 发行构建必须启用：让 tauri-build 把 frontendDist（../dist）内嵌进 exe。

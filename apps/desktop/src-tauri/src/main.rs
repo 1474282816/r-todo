@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    r_todo_desktop_lib::run()
+    rtools_desktop_lib::run()
 }

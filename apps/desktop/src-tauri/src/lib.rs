@@ -1,4 +1,4 @@
-//! r-todo 桌面端 Tauri 入口
+//! RTools 桌面端 Tauri 入口
 
 mod battery_widget;
 mod db;
@@ -112,7 +112,7 @@ pub fn run() {
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
-                .tooltip("r-todo")
+                .tooltip("RTools")
                 .on_menu_event(move |app, event| {
                     match event.id().as_ref() {
                         "show" => {

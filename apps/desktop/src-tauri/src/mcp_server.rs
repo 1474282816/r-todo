@@ -37,10 +37,10 @@ impl ServerHandler for McpHandler {
     fn get_info(&self) -> ServerInfo {
         // rmcp 3.3 的 ServerInfo(InitializeResult) 为 #[non_exhaustive]，
         // 本工具链(rustc 1.97)禁止跨 crate 用 struct 表达式构造（含 ..Default），故用官方 builder API；
-        // from_build_env 的 name 固定为 "rmcp"，需显式 with_server_info 以满足测试对 "r-todo-desktop" 的断言
+        // from_build_env 的 name 固定为 "rmcp"，需显式 with_server_info 以满足测试对 "rtools-desktop" 的断言
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions("r-todo 待办：列出、创建、编辑、完成、删除任务")
-            .with_server_info(Implementation::new("r-todo-desktop", env!("CARGO_PKG_VERSION")))
+            .with_instructions("RTools 待办：列出、创建、编辑、完成、删除任务")
+            .with_server_info(Implementation::new("rtools-desktop", env!("CARGO_PKG_VERSION")))
     }
 
     fn list_tools(
@@ -646,7 +646,7 @@ mod tests {
         let handle = start_test_server(18768, "secret").await;
         let (status, json) = initialize(18768, Some("secret")).await;
         assert_eq!(status, 200);
-        assert_eq!(json["result"]["serverInfo"]["name"], "r-todo-desktop");
+        assert_eq!(json["result"]["serverInfo"]["name"], "rtools-desktop");
         handle.abort();
     }
 
@@ -664,7 +664,7 @@ mod tests {
         wait_port(18770).await;
         let (status, json) = initialize(18770, Some("secret")).await;
         assert_eq!(status, 200);
-        assert_eq!(json["result"]["serverInfo"]["name"], "r-todo-desktop");
+        assert_eq!(json["result"]["serverInfo"]["name"], "rtools-desktop");
 
         state.stop();
         wait_port_closed(18770).await;
@@ -675,7 +675,7 @@ mod tests {
         assert!(state.sync_running());
         let (status, json) = initialize(18770, Some("secret")).await;
         assert_eq!(status, 200, "重启后应正常响应，而非 500");
-        assert_eq!(json["result"]["serverInfo"]["name"], "r-todo-desktop");
+        assert_eq!(json["result"]["serverInfo"]["name"], "rtools-desktop");
         state.stop();
     }
 

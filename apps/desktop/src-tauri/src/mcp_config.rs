@@ -55,17 +55,17 @@ pub fn build_templates(token: &str) -> McpTemplates {
     let bearer = format!("Bearer {token}");
     McpTemplates {
         claude_code: format!(
-            "claude mcp add r-todo --transport http {url} --header \"Authorization: {bearer}\""
+            "claude mcp add rtools --transport http {url} --header \"Authorization: {bearer}\""
         ),
         claude_desktop: serde_json::to_string_pretty(&serde_json::json!({
-            "mcpServers": { "r-todo": { "url": url, "headers": { "Authorization": bearer } } }
+            "mcpServers": { "rtools": { "url": url, "headers": { "Authorization": bearer } } }
         })).expect("json"),
         opencode: serde_json::to_string_pretty(&serde_json::json!({
             "$schema": "https://opencode.ai/config.json",
-            "mcp": { "r-todo": { "type": "http", "url": url, "headers": { "Authorization": bearer } } }
+            "mcp": { "rtools": { "type": "http", "url": url, "headers": { "Authorization": bearer } } }
         })).expect("json"),
         codex: format!(
-            "[mcp_servers.r-todo]\ntype = \"http\"\nurl = \"{url}\"\nheaders = {{ Authorization = \"{bearer}\" }}"
+            "[mcp_servers.rtools]\ntype = \"http\"\nurl = \"{url}\"\nheaders = {{ Authorization = \"{bearer}\" }}"
         ),
     }
 }

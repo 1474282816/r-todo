@@ -522,7 +522,7 @@ pub async fn open_transfer_window(app: AppHandle) -> Result<(), String> {
         WINDOW_LABEL,
         WebviewUrl::App("index.html?view=transfer".into()),
     )
-    .title("互传 · r-todo")
+    .title("互传 · RTools")
     .inner_size(960.0, 600.0)
     .min_inner_size(720.0, 480.0)
     .center()
@@ -664,7 +664,7 @@ mod tests {
         ));
 
         let mut settings = TransferSettings::default();
-        assert_eq!(settings.port, 53317);
+        assert_eq!(settings.port, DEFAULT_PORT);
         assert!(!settings.enabled);
 
         settings.enabled = true;
@@ -697,7 +697,7 @@ mod tests {
         ));
         std::fs::write(&path, "{oops").expect("write");
         let loaded = load_settings(&path);
-        assert_eq!(loaded.port, 53317);
+        assert_eq!(loaded.port, DEFAULT_PORT);
         let _ = std::fs::remove_file(&path);
     }
 }
