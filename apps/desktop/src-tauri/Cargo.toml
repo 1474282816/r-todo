@@ -1,6 +1,6 @@
 [package]
 name = "r-todo-desktop"
-version = "0.3.1"
+version = "0.3.2"
 description = "r-todo Windows 桌面端"
 authors = ["you"]
 edition = "2021"
