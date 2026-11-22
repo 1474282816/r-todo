@@ -67,13 +67,28 @@ impl HidppTransport {
     pub fn open(interfaces: &[HidInterface]) -> Result<Self> {
         // 必须限定罗技 VID：主板/其它厂商也用 0xFF00 usage page，
         // 只按 usage 找会抓到完全无关的设备（实测 Colorful MBoard 就是这个坑）
+        Self::open_for(interfaces, None)
+    }
+
+    /// 按 PID 打开。
+    ///
+    /// 鼠标插着 USB 线时，接收器（如 C539）和本体（如 C08D）会**同时**存在，
+    /// 两套都有 0xFF00 接口。不指定 PID 的话 `find` 会抓到先枚举出来的那个，
+    /// 而接收器在插线状态下读不到电量（0x1001 返回"不支持"）。
+    pub fn open_for(interfaces: &[HidInterface], product_id: Option<u16>) -> Result<Self> {
+        let matches = |i: &&HidInterface| {
+            i.vendor_id == 0x046D
+                && i.usage_page == 0xFF00
+                && product_id.is_none_or(|pid| i.product_id == pid)
+        };
+
         let short = interfaces
             .iter()
-            .find(|i| i.vendor_id == 0x046D && i.usage_page == 0xFF00 && i.usage == 0x0001)
+            .find(|i| matches(i) && i.usage == 0x0001)
             .ok_or_else(|| anyhow!("找不到罗技 HID++ 短报文接口"))?;
         let long = interfaces
             .iter()
-            .find(|i| i.vendor_id == 0x046D && i.usage_page == 0xFF00 && i.usage == 0x0002);
+            .find(|i| matches(i) && i.usage == 0x0002);
 
         let short_dev = HidDevice::open(short, true)?;
         // 长接口打不开不影响主流程 —— 某些接收器没有这个 collection

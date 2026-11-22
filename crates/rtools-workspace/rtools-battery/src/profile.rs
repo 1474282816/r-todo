@@ -160,7 +160,9 @@ pub fn builtin() -> Vec<DeviceProfile> {
         // 实测：0x1001 BATTERY_VOLTAGE 返回 `0E 68`，按大端解析 3684mV（锂电池满电 4.2V）。
         // 该机型不支持 0x1000/0x1004，只能走电压 + 放电曲线换算。
         DeviceProfile {
-            id: "logitech:046D:C539".into(),
+            // ID 按产品名生成，不绑 PID —— 插拔线时会在 C539/C08D 之间切换，
+            // 绑 PID 会导致同一只鼠标在界面上变成两台设备。
+            id: "logitech:G502-LIGHTSPEED".into(),
             vendor_id: 0x046D,
             product_id: 0xC539,
             name: "G502 LIGHTSPEED".into(),
@@ -255,4 +257,20 @@ pub fn find_builtin(vendor_id: u16, product_id: u16) -> Option<DeviceProfile> {
     builtin()
         .into_iter()
         .find(|p| p.vendor_id == vendor_id && p.product_id == product_id)
+}
+
+/// 按 VID + 产品名查内置档案。
+///
+/// 为什么需要这个：同一只罗技鼠标插拔 USB 线时会在两个 PID 之间切换
+/// （G502：无线 C539 / 有线 C08D），但它们的产品名是一样的。
+/// 只按 PID 查会让同一台设备在两种状态下落到不同档案，界面上变成两台。
+pub fn find_builtin_by_name(vendor_id: u16, product: &str) -> Option<DeviceProfile> {
+    if product.is_empty() {
+        return None;
+    }
+    builtin().into_iter().find(|p| {
+        p.vendor_id == vendor_id
+            && !p.name.is_empty()
+            && product.to_ascii_lowercase().contains(&p.name.to_ascii_lowercase())
+    })
 }

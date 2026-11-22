@@ -184,25 +184,38 @@ impl BatteryService {
         let custom = self.custom.lock().await.clone();
         let mut found: Vec<Profile> = Vec::new();
 
-        // 按 VID:PID 去重，同一台设备会枚举出好几个 collection
+        // 按最终 profile id 去重，而不是按 VID:PID。
+        //
+        // 两个原因：
+        // 1. 同一台设备会枚举出好几个 collection（同一 PID）
+        // 2. 罗技鼠标插拔线时会在两个 PID 之间切换，但它们归到同一个
+        //    逻辑 id（按产品名生成）—— 按 PID 去重会让它出现两次
         let mut seen = std::collections::HashSet::new();
         for iface in &interfaces {
             let key = (iface.vendor_id, iface.product_id);
-            if !seen.insert(key) {
-                continue;
-            }
 
             let id_vendor = format!("vendor:{:04X}:{:04X}", key.0, key.1);
             let id_logi = format!("logitech:{:04X}:{:04X}", key.0, key.1);
 
             // 1. 用户标定过的优先
             if let Some(p) = custom.get(&id_vendor).or_else(|| custom.get(&id_logi)) {
+                if !seen.insert(p.id.clone()) {
+                    continue;
+                }
                 found.push(p.clone());
                 continue;
             }
 
             // 2. 内置表
-            if let Some(p) = profile::find_builtin(key.0, key.1) {
+            //
+            // 先按 VID:PID 精确匹配，再按产品名兜底 —— 罗技同一只鼠标
+            // 插拔线时 PID 会变（C539 ↔ C08D），但产品名不变。
+            if let Some(p) = profile::find_builtin(key.0, key.1)
+                .or_else(|| profile::find_builtin_by_name(key.0, &iface.product))
+            {
+                if !seen.insert(p.id.clone()) {
+                    continue;
+                }
                 found.push(p);
                 continue;
             }
@@ -222,15 +235,24 @@ impl BatteryService {
                     .iter()
                     .any(|i| i.vendor_id == 0x046D && i.usage_page == 0xFF00)
             {
+                // ID 不绑 PID：同一只鼠标插拔线时会在 C539（接收器）
+                // 和 C08D（本体）之间切换，绑 PID 的话界面上会"变成另一台设备"，
+                // 缓存的电量、用户标定的档案全都对不上。
+                // 用产品名做稳定标识 —— 它不随连接方式变化。
+                let product = if iface.product.is_empty() {
+                    "罗技无线设备".to_string()
+                } else {
+                    iface.product.clone()
+                };
+                let id = format!("logitech:{}", product.replace(' ', "-"));
+                if !seen.insert(id.clone()) {
+                    continue;
+                }
                 found.push(Profile {
-                    id: id_logi,
+                    id,
                     vendor_id: key.0,
                     product_id: key.1,
-                    name: if iface.product.is_empty() {
-                        "罗技无线设备".into()
-                    } else {
-                        iface.product.clone()
-                    },
+                    name: product,
                     kind: DeviceKind::Unknown,
                     source: BatterySource::LogitechHidpp,
                     transport: "2.4G".into(),
@@ -242,8 +264,12 @@ impl BatteryService {
 
             // 4. 有 Feature 接口的，试试标准 HID 电量字段
             if is_real_peripheral(iface) && iface.feature_len > 0 && standard::read(iface).is_some() {
+                let id = format!("hid:{:04X}:{:04X}", key.0, key.1);
+                if !seen.insert(id.clone()) {
+                    continue;
+                }
                 found.push(Profile {
-                    id: format!("hid:{:04X}:{:04X}", key.0, key.1),
+                    id,
                     vendor_id: key.0,
                     product_id: key.1,
                     name: if iface.product.is_empty() {
@@ -410,7 +436,53 @@ fn read_standard(profile: &Profile, interfaces: &[hid::HidInterface]) -> Result<
 }
 
 fn read_logitech(profile: &Profile, interfaces: &[hid::HidInterface]) -> Result<DeviceReading> {
-    let transport = hidpp::HidppTransport::open(interfaces)?;
+    // 插线时接收器（C539）和本体（C08D）同时存在，两套 0xFF00 接口都在。
+    // 接收器在插线状态下 0x1001 返回"不支持"，本体才有真实数据 ——
+    // 所以不能只挑一个试，得两个都试，谁先读到用谁。
+    //
+    // 顺序：先本体（插着线时数据最准），再接收器（无线状态），最后不限 PID。
+    let body_pid = interfaces
+        .iter()
+        .find(|i| {
+            i.vendor_id == 0x046D
+                && !i.product.contains("Receiver")
+                && is_real_peripheral(i)
+                && i.usage_page == 0xFF00
+        })
+        .map(|i| i.product_id);
+
+    let mut transports = Vec::new();
+    if let Some(pid) = body_pid {
+        if let Ok(t) = hidpp::HidppTransport::open_for(interfaces, Some(pid)) {
+            transports.push(t);
+        }
+    }
+    // 再补一个"不限 PID"的通道（覆盖只有接收器的情况）
+    if let Ok(t) = hidpp::HidppTransport::open_for(interfaces, Some(0xC539)) {
+        transports.push(t);
+    }
+    if transports.is_empty() {
+        transports.push(hidpp::HidppTransport::open(interfaces)?);
+    }
+
+    let mut last_error = None;
+    for transport in &transports {
+        match try_read_logitech(profile, transport) {
+            Ok(reading) => return Ok(reading),
+            Err(err) => last_error = Some(err.to_string()),
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        last_error.unwrap_or_else(|| "接收器上没有可响应的设备（休眠中）".into())
+    ))
+}
+
+/// 在一条 HID++ 通道上尝试读出电量。
+fn try_read_logitech(
+    profile: &Profile,
+    transport: &hidpp::HidppTransport,
+) -> Result<DeviceReading> {
 
     // 接收器上可能有多个索引，逐个探，取第一个能读到的。
     //
@@ -555,16 +627,26 @@ fn read_hidpp20(
                 // 大端：0E 66 = 3686mV
                 let mv = u16::from_be_bytes([data[0], data[1]]);
                 if (3000..=4500).contains(&mv) {
-                    // 电压换算出的百分比在充电时是虚高的：
-                    // 锂电池充电电压被顶到 4.2V 附近，按放电曲线算就是 100%，
-                    // 但实际可能只有一半电量。所以充电态不报百分比，只报"充电中"。
-                    // 判据：>= 4100mV 认为正在充电。
+                    // 充电标志在 `[2]`（payload 的第 3 字节，即 data[2]）：
+                    //   0x80 = 正在充电，0x00 = 未充电
                     //
-                    // 实测这只 G502 插线时读数在 4120~4145mV 之间浮动，
-                    // 拔线后掉到 3686mV 附近。4100 这条线能分开两种状态，
-                    // 又不会把刚充满静置的电池误判成充电。
-                    let charging = mv >= 4100;
+                    // 实测对照（这只 G502）：
+                    //   插线  C08D 本体  06 0B 10 6D 80  4205mV  [4]=0x80
+                    //   拔线  C539 接收器 06 0B 10 26 00  4134mV  [4]=0x00
+                    // 注意两个电压只差 70mV —— 靠电压阈值根本分不开，
+                    // 之前用 `>= 4100mV` 判充电，拔线后 4134mV 会误报成充电中。
+                    //
+                    // 旧设备可能没有这个标志位（第 5 字节缺失或恒 0），
+                    // 此时退回电压估算 —— 不完美，但比完全不判要好。
+                    let flag = data.get(2).copied();
+                    let charging = match flag {
+                        Some(f) if f & 0x80 != 0 => true,
+                        Some(_) => false,
+                        None => mv >= 4150,
+                    };
                     let percent = if charging {
+                        // 充电时电压被顶到 4.2V，按放电曲线算就是 100%，
+                        // 但实际可能只有一半电量 —— 报假百分比不如不报。
                         None
                     } else {
                         hidpp::voltage_to_percent(mv)
@@ -575,9 +657,12 @@ fn read_hidpp20(
                         if charging {
                             ChargeState::Charging
                         } else {
-                            ChargeState::Unknown
+                            ChargeState::Discharging
                         },
-                        format!("HID++ 0x1001 电压 {mv}mV"),
+                        match flag {
+                            Some(f) => format!("HID++ 0x1001 电压 {mv}mV 标志 0x{f:02X}"),
+                            None => format!("HID++ 0x1001 电压 {mv}mV"),
+                        },
                     ));
                 }
             }
@@ -653,12 +738,22 @@ fn is_real_peripheral(iface: &hid::HidInterface) -> bool {
 /// 而且接收器不会因为鼠标关机而消失。
 fn is_logitech_primary(iface: &hid::HidInterface, all: &[hid::HidInterface]) -> bool {
     let is_receiver = iface.product.contains("Receiver");
-    if is_receiver {
-        return true;
+
+    // 插线时鼠标会以"本体"身份重新枚举（如 C08D），此时接收器（C539）
+    // 虽然还在，但它的 HID++ 通道读不到电量 —— 实测 0x1001 返回"不支持"。
+    // 所以不能无脑优先接收器，得看谁真的能提供电量。
+    //
+    // 判定顺序：
+    //   1. 有本体（非 Receiver）就用本体 —— 它插着线，电量/充电状态最准
+    //   2. 否则用接收器 —— 无线连接时走这条
+    let has_body = all
+        .iter()
+        .any(|i| i.vendor_id == 0x046D && !i.product.contains("Receiver") && is_real_peripheral(i));
+
+    if has_body {
+        return !is_receiver;
     }
-    // 本体：只有在没有任何接收器时才作为主设备
-    !all.iter()
-        .any(|i| i.vendor_id == 0x046D && i.product.contains("Receiver"))
+    is_receiver
 }
 
 fn guess_kind(iface: &hid::HidInterface) -> DeviceKind {
@@ -717,5 +812,46 @@ mod tests {
         iface.product = "G502 LIGHTSPEED".into();
         iface.manufacturer = "Logitech".into();
         assert!(is_real_peripheral(&iface));
+    }
+}
+
+#[cfg(test)]
+mod charge_flag_tests {
+    /// G502 的 0x1001 fn0 回复格式：
+    /// `[0]=特性索引 [1]=功能字节 [2..4]=电压(大端) [4]=标志`
+    /// 标志 0x80 = 充电中，0x00 = 未充电。
+    ///
+    /// 这两组数据来自实测（插线 C08D / 拔线 C539），
+    /// 电压只差 47mV —— 靠阈值分不开，必须用标志位。
+    fn parse_flag(data: &[u8]) -> Option<u8> {
+        data.get(2).copied()
+    }
+
+    #[test]
+    fn charging_flag_is_0x80() {
+        // 插线实测：06 0b 10 6d 80 -> 4205mV 标志 0x80
+        let data = [0x10, 0x6d, 0x80, 0x00, 0x00];
+        let flag = parse_flag(&data).unwrap();
+        assert_eq!(flag, 0x80);
+        assert_ne!(flag & 0x80, 0, "最高位应表示充电中");
+    }
+
+    #[test]
+    fn discharging_flag_is_0x00() {
+        // 拔线实测：06 0b 10 26 00 -> 4134mV 标志 0x00
+        let data = [0x10, 0x26, 0x00, 0x00, 0x00];
+        let flag = parse_flag(&data).unwrap();
+        assert_eq!(flag, 0x00);
+        assert_eq!(flag & 0x80, 0, "最高位为 0 表示未充电");
+    }
+
+    #[test]
+    fn voltage_alone_cannot_distinguish() {
+        // 这两个电压差不到 50mV，用 >= 4100 的阈值会把拔线误判成充电
+        let charging_mv: u16 = 0x106d; // 4205
+        let discharging_mv: u16 = 0x1026; // 4134
+        assert!(charging_mv >= 4100);
+        assert!(discharging_mv >= 4100, "拔线电压也超过 4100 阈值");
+        assert!((charging_mv - discharging_mv) < 100);
     }
 }
