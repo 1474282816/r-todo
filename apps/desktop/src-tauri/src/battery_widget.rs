@@ -325,6 +325,11 @@ pub fn spawn_poll_loop(app: AppHandle, widget: Arc<BatteryWidget>) {
         // 启动后先等 3 秒：让 HID 栈稳定下来，避免和应用启动抢设备
         tokio::time::sleep(Duration::from_secs(3)).await;
 
+        // 先无条件刷一次：这一步会把充电状态监听线程拉起来。
+        // 不能等"打开挂件"才刷 —— 用户经常在挂件关着的时候插拔线，
+        // 那时候没人监听，状态帧就白白漏掉了。
+        let _ = widget.service.refresh().await;
+
         let mut last = Instant::now() - Duration::from_secs(1);
         loop {
             let interval = {
