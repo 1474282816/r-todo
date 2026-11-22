@@ -1,6 +1,6 @@
 # rtools
 
-个人跨端工具集。当前包含 Windows 待办与局域网互传、Android 待办，以及 Rust 自托管同步服务。
+个人跨端工具集。当前包含 Windows 待办、局域网互传、无线设备电量挂件，Android 待办，以及 Rust 自托管同步服务。
 
 ## 技术栈
 
@@ -15,17 +15,15 @@
 ```
 rtools/
 ├── apps/
-│   ├── desktop-tauri/    # 当前 Tauri 桌面端
-│   ├── desktop-avalonia/ # 历史 Avalonia 实现（回退）
-│   ├── desktop/          # 旧 Tauri 实现（归档）
+│   ├── desktop/          # 当前桌面端（Tauri 2 + React + Rust）
+│   ├── desktop-tauri/    # 历史 Tauri 重建稿（归档，不再构建）
+│   ├── desktop-avalonia/ # 历史 Avalonia 实现（已废弃）
 │   └── mobile/           # Flutter 移动端
 ├── crates/
-│   ├── rtools-workspace/ # Rust Engine 与同步服务
+│   ├── rtools-workspace/ # Rust Engine / 同步服务 / 无线设备电量
 │   └── transfer-core/    # LocalSend 兼容互传核心
 ├── packages/
-│   ├── schema/           # 数据模型 JSON Schema（唯一真源）
-│   ├── api-contract/     # 同步协议约定
-│   └── design-tokens/    # 视觉规范（颜色、间距）
+│   └── schema/           # 数据模型 JSON Schema（唯一真源）
 ├── deploy/               # rtools-syncd 部署
 ├── docs/                 # 需求 / 架构 / ADR
 └── scripts/              # 便利脚本
@@ -35,27 +33,30 @@ rtools/
 
 | 工具 | 用途 | 检查命令 |
 |---|---|---|
-| .NET 10 | Avalonia 桌面端 | `dotnet --version` |
 | Rust (stable) | Engine / 同步服务 | `rustc --version` |
+| Node 20+ / pnpm 10.33 | 桌面端前端 | `pnpm --version` |
 | Flutter (stable) | 移动端 | `flutter --version` |
 | Docker | 部署同步服务（**在 Linux 服务器上**，非 Windows 开发机） | `docker --version` |
 
-Windows 发布还需要 Inno Setup 6。
+Windows 打包用 Tauri 自带的 NSIS 目标，首次构建会自动下载 NSIS 工具链，无需手工安装。
 
 ## 快速开始
 
 ```powershell
-# 构建 Rust Engine
-cd crates/rtools-workspace
-cargo build -p rtools-engine
+# 仓库根目录
+pnpm install
 
-# 起 Tauri 桌面端
-cd ../desktop-tauri
-pnpm tauri dev
+# 起桌面端（等价于 cd apps/desktop && pnpm tauri dev）
+pnpm dev:desktop
+
+# 打 Windows 安装包（产物在 apps/desktop/src-tauri/target/release/bundle/nsis）
+pnpm build:desktop
+
+# 跑 Rust 侧测试
+pnpm test:rust
 
 # 起移动端（需已启动模拟器或连真机）
-cd ../mobile
-flutter run
+pnpm dev:mobile
 ```
 
 ## AI 操作待办（MCP）
@@ -81,6 +82,21 @@ flutter run
 - 首次接收需要确认，确认后可对已信任设备自动接收；默认保存到 `下载/rtools`
 - 协议实现复用 LocalSend 官方 Rust core：`crates/vendor/localsend-core`（Apache-2.0，pin rev）
 
+## 无线设备电量挂件（Windows）
+
+独立小窗口常驻桌面，一行一台设备：图标 + 名称 + 电量条 + 百分比。
+入口：主窗口右上电池图标 / 托盘菜单。
+
+- 已支持：罗技 G502（HID++ 2.0）、Leobog A75、迈从（Compx 厂商 Feature Report）、通用 HID 电量字段
+- 充电状态：G502 读标志位 `0x80`；A75 只在插拔线窗口期能问到，属于尽力而为
+- 源码：核心 `crates/rtools-workspace/rtools-battery`，窗口 `apps/desktop/src/windows/BatteryWidget.tsx`
+- 新增设备：在 `crates/rtools-workspace/rtools-battery/src/profile.rs` 加一条设备档案即可，ID 按产品名而非 PID（罗技插线会换 PID）
+
+## 待办数据位置
+
+`%APPDATA%\dev.rtodo.desktop\r-todo.db`（SQLite），同步队列与本地状态都在里面。
+删数据库 = 清空待办，升级框架不影响该文件。
+
 ## 文档
 
 - [需求文档 v1.0](docs/requirements.md)
@@ -91,6 +107,6 @@ flutter run
 
 ## 状态
 
-当前版本为 `0.3.0`。桌面端已切换为 Tauri 2，Rust Engine、Android、
+当前版本为 `0.3.4`。桌面端已切换为 Tauri 2，Rust Engine、Android、
 同步服务与互传继续共用。安装包见
 [Tauri 桌面重建交付说明](docs/handoff/2026-11-17-tauri-desktop-rebuild.md)。

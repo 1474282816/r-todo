@@ -1,15 +1,16 @@
 {
-  "name": "r-todo",
+  "name": "rtools",
   "private": true,
-  "version": "0.0.1",
-  "description": "极简跨端待办工具（Windows + Android + iPad）",
+  "version": "0.3.4",
+  "description": "个人跨端工具集：Windows 待办 + 局域网互传 + Android 待办 + Rust 自托管同步服务",
   "scripts": {
-    "dev:desktop": "pnpm --filter desktop-tauri tauri dev",
+    "dev:desktop": "pnpm --filter desktop tauri dev",
+    "build:desktop": "pnpm --filter desktop tauri build",
+    "test:rust": "cargo test --manifest-path crates/rtools-workspace/Cargo.toml --workspace",
     "dev:mobile": "pnpm -C apps/mobile exec flutter run",
-    "dev:server": "docker compose -f server/docker-compose.yml up",
-    "build:desktop": "pnpm --filter desktop-tauri tauri build",
     "build:mobile:android": "pnpm -C apps/mobile exec flutter build apk",
-    "build:mobile:ios": "pnpm -C apps/mobile exec flutter build ipa"
+    "build:mobile:ios": "pnpm -C apps/mobile exec flutter build ipa",
+    "dev:server": "docker compose -f server/docker-compose.yml up"
   },
   "packageManager": "pnpm@10.33.0",
   "engines": {
