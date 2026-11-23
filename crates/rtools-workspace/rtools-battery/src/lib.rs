@@ -33,7 +33,9 @@ pub const DEFAULT_INTERVAL_SECS: u64 = 60;
 ///
 /// 设备只在插拔线那一刻推帧，之后不再说明；超过这么久没再收到证据就当未知 ——
 /// 宁可少显示一个"充电中"，也不要因为漏了一帧就永远挂着它。
-pub const CHARGE_STATE_TTL: Duration = Duration::from_secs(6 * 3600);
+///
+/// 3 小时：一次充满大概 2 小时左右，留一点余量；真漏了帧，错挂时间也不会太长。
+pub const CHARGE_STATE_TTL: Duration = Duration::from_secs(3 * 3600);
 
 /// 一台设备当前的读数。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -451,18 +453,34 @@ fn charge_listener_loop(
 ) {
     struct Active {
         id: String,
+        /// 设备路径。用来判断"同一个 token 还是新插的"。
+        path: String,
         spec: profile::ChargeQuery,
         device: hid::HidDevice,
-        /// 连续空读次数，用来判断通道是不是已经没了。
-        idle: u32,
     }
 
     let mut active: Vec<Active> = Vec::new();
+    let mut last_check = Instant::now() - Duration::from_secs(120);
 
     loop {
-        // 补齐还没打开的通道（设备可能是应用启动之后才插上的）
-        if active.len() < targets.len() {
+        // 通道维护：缺通道、或者每 60 秒核对一次。
+        //
+        // **不能因为"长时间没数据"就关句柄**：没数据是常态（设备只在插拔线
+        // 那一瞬发帧），关掉再打开的那几毫秒正好会漏掉事件 —— 表现出来就是
+        // "线已经拔了，界面还挂着充电中"。只有设备真的从枚举里消失才放手。
+        if active.len() < targets.len() || last_check.elapsed() > Duration::from_secs(60) {
             let interfaces = hid::enumerate();
+            active.retain(|a| {
+                let alive = interfaces.iter().any(|i| i.path == a.path);
+                if !alive {
+                    // 设备不在了：它的状态也失效，别留在缓存里冒充最新
+                    if let Ok(mut map) = charge.lock() {
+                        map.remove(&a.id);
+                    }
+                    changed.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                alive
+            });
             for (id, vid, pid, spec) in &targets {
                 if active.iter().any(|a| a.id == *id) {
                     continue;
@@ -478,35 +496,28 @@ fn charge_listener_loop(
                 if let Ok(device) = hid::HidDevice::open(iface, false) {
                     active.push(Active {
                         id: id.clone(),
+                        path: iface.path.clone(),
                         spec: spec.clone(),
                         device,
-                        idle: 0,
                     });
                 }
             }
+            last_check = Instant::now();
         }
 
         for a in active.iter_mut() {
-            match a.device.read_input(150) {
-                Some(frame) => {
-                    a.idle = 0;
-                    if let Some(state) = vendor::parse_charge_event(&frame, &a.spec) {
-                        let mut map = charge.lock().unwrap_or_else(|e| e.into_inner());
-                        let unchanged = map.get(&a.id).is_some_and(|(s, _)| *s == state);
-                        map.insert(a.id.clone(), (state, Instant::now()));
-                        if !unchanged {
-                            changed.store(true, std::sync::atomic::Ordering::SeqCst);
-                        }
+            if let Some(frame) = a.device.read_input(150) {
+                if let Some(state) = vendor::parse_charge_event(&frame, &a.spec) {
+                    let mut map = charge.lock().unwrap_or_else(|e| e.into_inner());
+                    let unchanged = map.get(&a.id).is_some_and(|(s, _)| *s == state);
+                    map.insert(a.id.clone(), (state, Instant::now()));
+                    if !unchanged {
+                        changed.store(true, std::sync::atomic::Ordering::SeqCst);
                     }
                 }
-                None => a.idle += 1,
             }
         }
 
-        // 约 30 秒没数据：可能设备被拔走或换了 PID，丢掉句柄重新枚举
-        if active.iter().any(|a| a.idle > 200) {
-            active.retain(|a| a.idle <= 200);
-        }
         if active.is_empty() {
             std::thread::sleep(Duration::from_secs(2));
         }

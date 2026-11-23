@@ -91,7 +91,8 @@ pnpm dev:mobile
 - 充电状态：G502 读报文标志位 `0x80`；A75/迈从靠设备插拔线时主动推的状态帧（位掩码 `0x10`），
   由常驻只读线程守着，不写任何厂商命令
 - 电压型设备（G502 的 `0x1001`）只能读毫伏，百分比按 **Solaar** 的放电节点表换算，界面带 `≈` 标记
-- 读数超过 2 分钟没更新会标灰并显示"x 分钟前"；充电状态 6 小时没再收到报文就回到未知
+- 读数超过 2 分钟没更新会标灰并显示"x 分钟前"；充电状态 3 小时没再收到报文就回到未知
+- 充电监听常驻打开，不因"长时间没数据"重开句柄 —— 重开的那几毫秒会漏掉插拔帧
 - 源码：核心 `crates/rtools-workspace/rtools-battery`，窗口 `apps/desktop/src/windows/BatteryWidget.tsx`
 - 新增设备：在 `crates/rtools-workspace/rtools-battery/src/profile.rs` 加一条设备档案即可，ID 按产品名而非 PID（罗技插线会换 PID）
 - 抓报文：`cargo run -p rtools-battery --example a75_watch -- 300`（只读，30 秒内插拔一次线就能看到状态帧）
