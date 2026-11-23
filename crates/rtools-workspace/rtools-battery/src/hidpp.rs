@@ -304,40 +304,51 @@ fn parse_reply(report: &[u8], device_index: u8, request: &[u8]) -> Option<HidppR
 
 /// 把电压换算成电量百分比。
 ///
-/// 锂电池放电曲线：4.2V 满，3.3V 空。G502 满电约 4.2V，关机保护点约 3.4V。
-/// 分段线性 —— 锂电中段（3.7–3.9V）掉得慢，两端掉得快，单条直线会明显偏。
+/// 0x1001 只给毫伏，百分比是**估算**，所以节点表从哪来必须写清楚。
+///
+/// 这里的节点取自 Solaar（`logitech/hidpp20.py` 的放电节点表），是社区长期实测的
+/// 结果。之前那条曲线是自己拍的（4100→100、4000→85、3900→66…），中低段明显偏乐观：
+///
+/// | 电压 | 旧曲线 | Solaar | 差 |
+/// |---|---|---|---|
+/// | 4060 mV | 94% | 89% | 5 |
+/// | 4000 mV | 85% | 81% | 4 |
+/// | 3700 mV | 28% | 17% | 11 |
+/// | 3600 mV | 14% | 3%  | 11 |
+///
+/// 数字越往下差得越多，因为旧曲线把"还能用多久"想得太乐观。
 pub fn voltage_to_percent(mv: u16) -> Option<u8> {
-    // (毫伏, 百分比)，从满到空。
-    //
-    // 单节锂电（G502 这类）在轻载下放电平台很高：3.7V 仍有三成多电量，
-    // 而不是常见电池包标称的"3.7V ≈ 50%"。这条曲线按鼠标实际放电特性拟合，
-    // 中段刻意压平 —— 直接把 3.7V 报成 50% 会让人以为电量掉得飞快。
-    const CURVE: [(u16, u8); 8] = [
-        (4100, 100),
-        (4000, 85),
-        (3900, 66),
-        (3800, 45),
-        (3700, 28),
-        (3600, 14),
-        (3500, 5),
-        (3400, 0),
+    // (毫伏, 百分比)，从空到满。
+    const CURVE: [(u16, u8); 13] = [
+        (3500, 0),
+        (3579, 2),
+        (3646, 5),
+        (3671, 10),
+        (3717, 20),
+        (3751, 30),
+        (3778, 40),
+        (3811, 50),
+        (3859, 60),
+        (3922, 70),
+        (3989, 80),
+        (4067, 90),
+        (4186, 100),
     ];
 
-    if mv >= CURVE[0].0 {
-        return Some(100);
-    }
-    if mv <= CURVE[CURVE.len() - 1].0 {
+    if mv <= CURVE[0].0 {
         return Some(0);
+    }
+    if mv >= CURVE[CURVE.len() - 1].0 {
+        return Some(100);
     }
 
     for w in CURVE.windows(2) {
-        let (hi_mv, hi_pct) = w[0];
-        let (lo_mv, lo_pct) = w[1];
-        if mv <= hi_mv && mv >= lo_mv {
-            let span_mv = (hi_mv - lo_mv) as f32;
-            let span_pct = (hi_pct - lo_pct) as f32;
-            let ratio = (mv - lo_mv) as f32 / span_mv;
-            return Some((lo_pct as f32 + span_pct * ratio).round() as u8);
+        let (lo_mv, lo_pct) = w[0];
+        let (hi_mv, hi_pct) = w[1];
+        if mv >= lo_mv && mv <= hi_mv {
+            let ratio = (mv - lo_mv) as f32 / (hi_mv - lo_mv) as f32;
+            let span = hi_pct as f32 - lo_pct as f32;
+            return Some((lo_pct as f32 + span * ratio).round() as u8);
         }
     }
     None
@@ -361,7 +372,17 @@ mod tests {
     fn voltage_endpoints() {
         assert_eq!(voltage_to_percent(4200), Some(100));
         assert_eq!(voltage_to_percent(4500), Some(100));
-assert_eq!(voltage_to_percent(3400), Some(0));
-assert_eq!(voltage_to_percent(3000), Some(0));
+        assert_eq!(voltage_to_percent(3400), Some(0));
+        assert_eq!(voltage_to_percent(3000), Some(0));
+    }
+
+    /// 曲线必须和 Solaar 的节点表一致。
+    /// 旧曲线在 4060mV 报 94%，Solaar 是 89% —— 这正是和 MouseDock 对不上的原因。
+    #[test]
+    fn voltage_matches_solaar_knots() {
+        assert_eq!(voltage_to_percent(4067), Some(90));
+        assert_eq!(voltage_to_percent(4060), Some(89));
+        assert_eq!(voltage_to_percent(3989), Some(80));
+        assert_eq!(voltage_to_percent(3600), Some(3));
     }
 }

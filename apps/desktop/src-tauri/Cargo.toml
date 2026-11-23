@@ -1,6 +1,6 @@
 [package]
 name = "rtools-desktop"
-version = "0.3.6"
+version = "0.3.7"
 description = "RTools Windows 桌面端"
 authors = ["you"]
 edition = "2021"

@@ -22,6 +22,8 @@ interface DeviceReading {
   online: boolean;
   voltageMv: number | null;
   source: string;
+  /** 百分比是估算值（电压换算），界面上要加 "≈" */
+  estimated: boolean;
   raw: string;
   updatedAt: number | null;
   error: string | null;
@@ -248,7 +250,7 @@ function DeviceRow({ device }: { device: DeviceReading }) {
   // 充电态单独说"充电中" —— 这时电压被顶高，换算出的百分比是假的，
   // 与其显示一个虚高的 100%，不如直说在充电。
   const statusText = percent !== null
-    ? `${percent}%`
+    ? `${device.estimated ? "≈" : ""}${percent}%`
     : isCharging
       ? "充电中"
       : device.online
@@ -262,7 +264,7 @@ function DeviceRow({ device }: { device: DeviceReading }) {
   return (
     <div
       className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
-      title={device.error ?? undefined}
+      title={device.error ?? device.source ?? undefined}
     >
       <KindIcon kind={device.kind} />
 

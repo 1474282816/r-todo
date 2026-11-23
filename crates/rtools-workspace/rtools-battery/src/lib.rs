@@ -52,6 +52,11 @@ pub struct DeviceReading {
     pub voltage_mv: Option<u16>,
     /// 读数来源，排查用。
     pub source: String,
+    /// 百分比是不是估算出来的（电压换算 → true，设备直接报百分比 → false）。
+    ///
+    /// 界面要给这类数字加 "≈"，否则用户会拿它和官方驱动里的精确值对比。
+    #[serde(default)]
+    pub estimated: bool,
     /// 原始字节，排查用。
     pub raw: String,
     /// 最后一次成功读到电量的时间（Unix 秒）。
@@ -76,6 +81,7 @@ impl DeviceReading {
             online: false,
             voltage_mv: None,
             source: source_label(profile.source).to_string(),
+            estimated: false,
             raw: String::new(),
             updated_at: None,
             error,
@@ -557,6 +563,7 @@ fn read_vendor(
         online: true,
         voltage_mv: None,
         source: format!("Feature 0x{:02X}", spec.report_id),
+        estimated: false,
         raw: hex(&reading.raw),
         updated_at: reading.percent.map(|_| now_unix()),
         error: None,
@@ -580,6 +587,7 @@ fn read_standard(profile: &Profile, interfaces: &[hid::HidInterface]) -> Result<
         online: percent.is_some(),
         voltage_mv: None,
         source: "标准 HID".into(),
+        estimated: false,
         raw: String::new(),
         updated_at: percent.map(|_| now_unix()),
         error: if percent.is_none() {
@@ -682,14 +690,15 @@ fn try_read_logitech(
                     None,
                     ChargeState::Unknown,
                     format!("HID++ 1.0 索引 {index}"),
+                    false,
                 ));
             }
             continue;
         }
 
         match read_hidpp20(&transport, index) {
-            Ok((percent, voltage, state, source)) => {
-                return Ok(build_logitech(profile, percent, voltage, state, source));
+            Ok((percent, voltage, state, source, estimated)) => {
+                return Ok(build_logitech(profile, percent, voltage, state, source, estimated));
             }
             Err(err) => last_error = Some(err.to_string()),
         }
@@ -706,6 +715,7 @@ fn build_logitech(
     voltage_mv: Option<u16>,
     state: ChargeState,
     source: String,
+    estimated: bool,
 ) -> DeviceReading {
     DeviceReading {
         id: profile.id.clone(),
@@ -717,6 +727,7 @@ fn build_logitech(
         online: true,
         voltage_mv,
         source,
+        estimated,
         raw: String::new(),
         updated_at: percent.map(|_| now_unix()),
         error: None,
@@ -739,7 +750,7 @@ fn read_hidpp10(transport: &hidpp::HidppTransport, index: u8) -> Option<u8> {
 fn read_hidpp20(
     transport: &hidpp::HidppTransport,
     index: u8,
-) -> Result<(Option<u8>, Option<u16>, ChargeState, String)> {
+) -> Result<(Option<u8>, Option<u16>, ChargeState, String, bool)> {
     // 0x1004 UNIFIED_BATTERY：fn1 才是真实百分比，fn0 首字节常是别的
     if let Some(fi) = transport.feature_index(index, 0x1004) {
         let status = transport.call(index, fi, 0x00, &[], 1100);
@@ -767,7 +778,7 @@ fn read_hidpp20(
         }
 
         if percent.is_some() {
-            return Ok((percent, None, state, "HID++ 0x1004".into()));
+            return Ok((percent, None, state, "HID++ 0x1004".into(), false));
         }
     }
 
@@ -806,6 +817,7 @@ fn read_hidpp20(
                     } else {
                         hidpp::voltage_to_percent(mv)
                     };
+                    let estimated = percent.is_some();
                     return Ok((
                         percent,
                         Some(mv),
@@ -818,6 +830,7 @@ fn read_hidpp20(
                             Some(f) => format!("HID++ 0x1001 电压 {mv}mV 标志 0x{f:02X}"),
                             None => format!("HID++ 0x1001 电压 {mv}mV"),
                         },
+                        estimated,
                     ));
                 }
             }
@@ -844,6 +857,7 @@ fn read_hidpp20(
                     voltage,
                     map_charge_state(data[2]),
                     "HID++ 0x1000".into(),
+                    false,
                 ));
             }
         }
