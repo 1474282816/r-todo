@@ -133,8 +133,32 @@ pub struct ChargeQuery {
     #[serde(default)]
     pub charging_bit: Option<u8>,
     /// 没有 `charging_bit` 的老式设备用取值表。
+    ///
+    /// A75 实测只认两个值：`0x01` 放电、`0x11` 充电；其它值（例如偶发抓到的
+    /// `0x10`）一律当未知，绝不按位硬猜成"充电中"。
     #[serde(default)]
     pub state_map: std::collections::BTreeMap<String, ChargeState>,
+    /// 可选：周期性发一条查询帧刷新状态。
+    ///
+    /// 设备平时不发帧，只在插拔线那一刻推一次；错过就再也问不到。
+    /// A75 实测 `13 05 01 00 06`（MouseDock 当心跳用的身份帧）能稳定拿到回复，
+    /// 回复里的 `13 0A … [7]` 就是状态位。靠它兜住"启动时已经插着"和"漏帧"两种情况。
+    #[serde(default)]
+    pub poll: Option<ChargePoll>,
+}
+
+/// 周期性状态查询的参数。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChargePoll {
+    /// 帧内容（不含校验和），写成一串十六进制，例如 `"13 05 01 00 06"`。
+    pub payload_hex: String,
+    /// 查询周期（秒）。
+    #[serde(default = "default_poll_interval")]
+    pub interval_secs: u64,
+}
+
+fn default_poll_interval() -> u64 {
+    60
 }
 
 /// 内置设备表。
@@ -202,8 +226,18 @@ pub fn builtin() -> Vec<DeviceProfile> {
                     usage_page: 0xFF02,
                     response_id: 0x0A,
                     state_index: 7,
-                    charging_bit: Some(0x10),
-                    state_map: Default::default(),
+                    // 只认这两个实测值，其它一律未知（0x10 是偶发抖动，不能当充电）
+                    charging_bit: None,
+                    state_map: [
+                        ("1".to_string(), ChargeState::Discharging),
+                        ("17".to_string(), ChargeState::Charging),
+                    ]
+                    .into_iter()
+                    .collect(),
+                    poll: Some(ChargePoll {
+                        payload_hex: "13 05 01 00 06".into(),
+                        interval_secs: 60,
+                    }),
                 }),
             }),
             calibrated: false,

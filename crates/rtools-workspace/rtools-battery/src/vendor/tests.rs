@@ -9,6 +9,7 @@ fn a75() -> ChargeQuery {
         state_index: 7,
         charging_bit: Some(0x10),
         state_map: Default::default(),
+        poll: None,
     }
 }
 

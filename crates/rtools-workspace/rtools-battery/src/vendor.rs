@@ -136,11 +136,57 @@ pub fn parse_charge_event(frame: &[u8], query: &ChargeQuery) -> Option<ChargeSta
                     ChargeState::Discharging
                 })
             } else {
-                query.state_map.get(&byte.to_string()).copied()
+                // 没有位定义时按取值表。表里没有就是"未知" —— 不按位硬猜，
+                // 否则偶发抓到的 0x10 会被当成"充电中"，就是我们踩过的那个坑。
+                Some(
+                    query
+                        .state_map
+                        .get(&byte.to_string())
+                        .copied()
+                        .unwrap_or(ChargeState::Unknown),
+                )
             }
         }
         _ => None,
     }
+}
+
+/// 周期查询：发一条已知安全的身份帧，从回复里取状态。
+///
+/// 设备平时不发帧，只在插拔线那一刻推一次；这条查询用来兜住
+/// "启动时就已经插着线"和"漏了一帧"两种情况。
+///
+/// 帧格式与 `parse_charge_event` 一致：前 19 字节 + 第 20 字节校验和（含 Report ID）。
+pub fn poll_state(device: &HidDevice, query: &ChargeQuery) -> Option<ChargeState> {
+    let poll = query.poll.as_ref()?;
+    let bytes: Vec<u8> = poll
+        .payload_hex
+        .split_whitespace()
+        .map(|t| u8::from_str_radix(t, 16))
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    if bytes.is_empty() || bytes.len() > 19 {
+        return None;
+    }
+
+    let mut frame = [0u8; 20];
+    frame[..bytes.len()].copy_from_slice(&bytes);
+    frame[19] = frame[..19].iter().fold(0u8, |a, b| a.wrapping_add(*b));
+
+    // 清掉上一轮积压的回复，避免把旧状态当成本次结果
+    device.drain(16);
+    device.write_output(&frame, 400).ok()?;
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(800);
+    while std::time::Instant::now() < deadline {
+        let Some(reply) = device.read_input(60) else {
+            continue;
+        };
+        if let Some(state) = parse_charge_event(&reply, query) {
+            return Some(state);
+        }
+    }
+    None
 }
 
 /// 20 字节状态帧的校验和（含 Report ID 在内的前 19 字节之和）。

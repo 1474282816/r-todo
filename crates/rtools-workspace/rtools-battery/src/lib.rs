@@ -457,6 +457,8 @@ fn charge_listener_loop(
         path: String,
         spec: profile::ChargeQuery,
         device: hid::HidDevice,
+        /// 上次周期查询的时间。
+        last_poll: Instant,
     }
 
     let mut active: Vec<Active> = Vec::new();
@@ -493,12 +495,16 @@ fn charge_listener_loop(
                 }) else {
                     continue;
                 };
-                if let Ok(device) = hid::HidDevice::open(iface, false) {
+                // 有周期查询的设备要能写：写只在每次 poll 时发生一条已知帧
+                let write = spec.poll.is_some();
+                if let Ok(device) = hid::HidDevice::open(iface, write) {
                     active.push(Active {
                         id: id.clone(),
                         path: iface.path.clone(),
                         spec: spec.clone(),
                         device,
+                        // 让它第一轮就查一次：解决"启动时线已经插着"的盲区
+                        last_poll: Instant::now() - Duration::from_secs(3600),
                     });
                 }
             }
@@ -506,14 +512,23 @@ fn charge_listener_loop(
         }
 
         for a in active.iter_mut() {
+            let interval = Duration::from_secs(
+                a.spec
+                    .poll
+                    .as_ref()
+                    .map(|p| p.interval_secs)
+                    .unwrap_or(86_400),
+            );
+            if a.last_poll.elapsed() >= interval {
+                a.last_poll = Instant::now();
+                if let Some(state) = vendor::poll_state(&a.device, &a.spec) {
+                    store_charge_state(&charge, &changed, &a.id, state);
+                }
+            }
+
             if let Some(frame) = a.device.read_input(150) {
                 if let Some(state) = vendor::parse_charge_event(&frame, &a.spec) {
-                    let mut map = charge.lock().unwrap_or_else(|e| e.into_inner());
-                    let unchanged = map.get(&a.id).is_some_and(|(s, _)| *s == state);
-                    map.insert(a.id.clone(), (state, Instant::now()));
-                    if !unchanged {
-                        changed.store(true, std::sync::atomic::Ordering::SeqCst);
-                    }
+                    store_charge_state(&charge, &changed, &a.id, state);
                 }
             }
         }
@@ -521,6 +536,21 @@ fn charge_listener_loop(
         if active.is_empty() {
             std::thread::sleep(Duration::from_secs(2));
         }
+    }
+}
+
+/// 写入一次状态；值变了才置"有变化"标记，供界面立刻刷新。
+fn store_charge_state(
+    charge: &std::sync::Arc<std::sync::Mutex<HashMap<String, (ChargeState, Instant)>>>,
+    changed: &std::sync::Arc<std::sync::atomic::AtomicBool>,
+    id: &str,
+    state: ChargeState,
+) {
+    let mut map = charge.lock().unwrap_or_else(|e| e.into_inner());
+    let unchanged = map.get(id).is_some_and(|(s, _)| *s == state);
+    map.insert(id.to_string(), (state, Instant::now()));
+    if !unchanged {
+        changed.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
