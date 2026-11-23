@@ -12,6 +12,43 @@ fn a75() -> ChargeQuery {
     }
 }
 
+fn vendor_spec(percent_index: usize) -> VendorSpec {
+    VendorSpec {
+        usage_page: 0xFF04,
+        report_id: 0x06,
+        percent_index,
+        state_index: None,
+        state_map: Default::default(),
+        scale: 1.0,
+        zero_means_unknown: true,
+        charge_query: None,
+    }
+}
+
+/// 声明之外的字节不能当电量。
+/// A75 的 `[8]=0x5F(95)` 恒定不变（插拔电、放一整天都是 95），根本不是百分比；
+/// 描述符里这份报文只有 8 字节，`[8]` 在声明之外。
+#[test]
+fn percent_beyond_declared_length_is_rejected() {
+    let mut raw = vec![0u8; 64];
+    raw[0] = 0x06;
+    raw[8] = 0x5F;
+    let (percent, note) = extract_percent(&raw, &vendor_spec(8), 8);
+    assert_eq!(percent, None);
+    assert!(note.is_some(), "越界时必须给界面一个说明");
+}
+
+/// 声明之内的字节正常读取（迈从 G87 就是 [3]）。
+#[test]
+fn percent_inside_declared_length_is_read() {
+    let mut raw = vec![0u8; 64];
+    raw[0] = 0x06;
+    raw[3] = 42;
+    let (percent, note) = extract_percent(&raw, &vendor_spec(3), 8);
+    assert_eq!(percent, Some(42));
+    assert!(note.is_none());
+}
+
 /// 插线时抓到的 0x05 组（100%，状态 0x11）。
 #[test]
 fn charging_packet_is_recognised() {

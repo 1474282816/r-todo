@@ -254,7 +254,9 @@ function DeviceRow({ device }: { device: DeviceReading }) {
     : isCharging
       ? "充电中"
       : device.online
-        ? "--"
+        ? device.error
+          ? "不支持"
+          : "--"
         : "休眠";
 
   // 充电时没有可信百分比，电量条改成满格流动效果，不要画成 0%。

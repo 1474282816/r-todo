@@ -26,6 +26,8 @@ pub struct VendorReading {
     pub percent: Option<u8>,
     pub state: ChargeState,
     pub raw: Vec<u8>,
+    /// 读到了报文、但这份报文里没有可用电量时的说明（给界面做提示）。
+    pub note: Option<String>,
 }
 
 /// 按档案参数读一次电量。
@@ -43,19 +45,7 @@ pub fn read(interfaces: &[super::hid::HidInterface], spec: &VendorSpec) -> Resul
     // 接口声明长度可能小于实际数据，取实际读到的长度
     let raw = raw[..raw.len().min(REPORT_BUFFER)].to_vec();
 
-    let percent = raw.get(spec.percent_index).copied().and_then(|b| {
-        if b == 0 && spec.zero_means_unknown {
-            // 0 多半表示"还没读出来"，不是真的没电 —— 报 0% 会吓人
-            None
-        } else {
-            let scaled = (b as f32 * spec.scale).round();
-            if scaled > 100.0 {
-                None
-            } else {
-                Some(scaled as u8)
-            }
-        }
-    });
+    let (percent, note) = extract_percent(&raw, spec, iface.feature_len as usize);
 
     // 充电状态只从这份 Feature 报文里取（迈从这类设备就写在这里）。
     // A75 的充电位不在这里 —— 由上层用被动监听到的状态覆盖，见 `lib.rs`。
@@ -69,7 +59,44 @@ pub fn read(interfaces: &[super::hid::HidInterface], spec: &VendorSpec) -> Resul
         percent,
         state,
         raw,
+        note,
     })
+}
+
+/// 按档案参数从报文里取电量，并**拒绝声明长度之外的字节**。
+///
+/// 为什么要有这道校验：设备用 64 字节缓冲读时会在声明长度之后多吐数据，
+/// 那些字节含义未知。A75 的 `[8]` 就是这样 —— 固定 0x5F（95），插拔电、
+/// 用一整天都不变，根本不是百分比。当电量显示只会误导人。
+fn extract_percent(
+    raw: &[u8],
+    spec: &VendorSpec,
+    declared_len: usize,
+) -> (Option<u8>, Option<String>) {
+    if spec.percent_index >= declared_len {
+        return (
+            None,
+            Some(format!(
+                "设备不上报电量：报文只声明 {declared_len} 字节，电量位 [{}] 在声明之外且恒定不变",
+                spec.percent_index
+            )),
+        );
+    }
+
+    let percent = raw.get(spec.percent_index).copied().and_then(|b| {
+        if b == 0 && spec.zero_means_unknown {
+            // 0 多半表示"还没读出来"，不是真的没电 —— 报 0% 会吓人
+            None
+        } else {
+            let scaled = (b as f32 * spec.scale).round();
+            if scaled > 100.0 {
+                None
+            } else {
+                Some(scaled as u8)
+            }
+        }
+    });
+    (percent, None)
 }
 
 /// 解析设备主动推送的充电状态帧。**只读，不发任何命令。**

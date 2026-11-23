@@ -577,7 +577,12 @@ fn read_vendor(
         estimated: false,
         raw: hex(&reading.raw),
         updated_at: reading.percent.map(|_| now_unix()),
-        error: None,
+        // 报文里没有可用电量时，把原因带给界面（悬停能看到）
+        error: if reading.percent.is_none() {
+            reading.note.clone()
+        } else {
+            None
+        },
     })
 }
 
