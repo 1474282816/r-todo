@@ -29,6 +29,12 @@ pub const MIN_INTERVAL_SECS: u64 = 30;
 pub const MAX_INTERVAL_SECS: u64 = 1800;
 pub const DEFAULT_INTERVAL_SECS: u64 = 60;
 
+/// 充电状态的保质期。
+///
+/// 设备只在插拔线那一刻推帧，之后不再说明；超过这么久没再收到证据就当未知 ——
+/// 宁可少显示一个"充电中"，也不要因为漏了一帧就永远挂着它。
+pub const CHARGE_STATE_TTL: Duration = Duration::from_secs(6 * 3600);
+
 /// 一台设备当前的读数。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,7 +102,7 @@ pub struct BatteryService {
     ///
     /// 这些设备不会稳定应答查询，只在插拔线那一刻主动推一次报文，
     /// 轮询（默认 60 秒一次）几乎必然错过，所以单独开一条常驻线程守着。
-    charge: std::sync::Arc<std::sync::Mutex<HashMap<String, ChargeState>>>,
+    charge: std::sync::Arc<std::sync::Mutex<HashMap<String, (ChargeState, Instant)>>>,
     /// 监听线程是否已启动（幂等）。
     charge_listener: std::sync::Arc<std::sync::atomic::AtomicBool>,
     /// 监听到状态变化时置位，供上层立刻刷新界面。
@@ -163,11 +169,13 @@ impl BatteryService {
     }
 
     /// 当前已知的充电状态（还没监听到就返回 `None`）。
+    /// 当前已知的充电状态；超过 [`CHARGE_STATE_TTL`] 没再收到报文就当未知。
+    ///
+    /// 状态是设备推送的，可能漏帧；不加时效的话会永远显示"充电中"。
     pub fn charge_state(&self, id: &str) -> Option<ChargeState> {
-        self.charge
-            .lock()
-            .ok()
-            .and_then(|m| m.get(id).copied())
+        let map = self.charge.lock().ok()?;
+        let (state, at) = map.get(id)?;
+        (at.elapsed() <= CHARGE_STATE_TTL).then_some(*state)
     }
 
     /// 从持久化的 JSON 恢复用户标定档案。
@@ -432,7 +440,7 @@ impl BatteryService {
 /// 所以这里是"阻塞等事件"，不做任何轮询写入 —— 盲写曾经把键盘 MCU 写死过。
 fn charge_listener_loop(
     targets: Vec<(String, u16, u16, profile::ChargeQuery)>,
-    charge: std::sync::Arc<std::sync::Mutex<HashMap<String, ChargeState>>>,
+    charge: std::sync::Arc<std::sync::Mutex<HashMap<String, (ChargeState, Instant)>>>,
     changed: std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) {
     struct Active {
@@ -478,8 +486,9 @@ fn charge_listener_loop(
                     a.idle = 0;
                     if let Some(state) = vendor::parse_charge_event(&frame, &a.spec) {
                         let mut map = charge.lock().unwrap_or_else(|e| e.into_inner());
-                        if map.get(&a.id) != Some(&state) {
-                            map.insert(a.id.clone(), state);
+                        let unchanged = map.get(&a.id).is_some_and(|(s, _)| *s == state);
+                        map.insert(a.id.clone(), (state, Instant::now()));
+                        if !unchanged {
                             changed.store(true, std::sync::atomic::Ordering::SeqCst);
                         }
                     }

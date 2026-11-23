@@ -227,8 +227,22 @@ export function BatteryWidget() {
 
 function DeviceRow({ device }: { device: DeviceReading }) {
   const percent = device.percent;
-  const isCharging = device.state === "charging";
-  const color = levelColor(percent);
+
+  // 读数年龄。updatedAt 是最后一次**成功读到**电量的时间：读失败时后端会保留旧值，
+  // 所以光看 "95%" 分不清是刚读的还是几小时前的。超过 2 分钟就标灰并写明多久以前。
+  const ageSec = device.updatedAt
+    ? Math.max(0, Math.round(Date.now() / 1000 - device.updatedAt))
+    : null;
+  const stale = ageSec !== null && ageSec >= 120;
+  const ageText =
+    ageSec === null || ageSec < 120
+      ? null
+      : ageSec < 3600
+        ? `${Math.floor(ageSec / 60)} 分钟前`
+        : `${Math.floor(ageSec / 3600)} 小时前`;
+
+  const isCharging = device.state === "charging" && !stale;
+  const color = stale ? "rgb(156 163 175)" : levelColor(percent);
 
   // 右侧状态文字：有百分比就报百分比，否则说明为什么没有。
   // 充电态单独说"充电中" —— 这时电压被顶高，换算出的百分比是假的，
@@ -246,7 +260,10 @@ function DeviceRow({ device }: { device: DeviceReading }) {
   const barColor = isCharging ? "rgb(16 185 129)" : color;
 
   return (
-    <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]">
+    <div
+      className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+      title={device.error ?? undefined}
+    >
       <KindIcon kind={device.kind} />
 
       <div className="min-w-0 flex-1">
@@ -256,6 +273,9 @@ function DeviceRow({ device }: { device: DeviceReading }) {
           </span>
           <span className="ml-auto shrink-0 text-[11px] font-medium tabular-nums" style={{ color }}>
             {statusText}
+            {ageText && (
+              <span className="ml-1 text-[10px] font-normal opacity-70">{ageText}</span>
+            )}
           </span>
         </div>
         {/* 电量条：圆角细条，跟百分比同色 */}
@@ -268,6 +288,7 @@ function DeviceRow({ device }: { device: DeviceReading }) {
             style={{
               width: `${barWidth}%`,
               backgroundColor: barColor,
+              opacity: stale ? 0.45 : 1,
             }}
           />
         </div>

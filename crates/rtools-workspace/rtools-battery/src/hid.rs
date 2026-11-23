@@ -278,6 +278,14 @@ pub struct HidDevice {
 unsafe impl Send for HidDevice {}
 
 impl HidDevice {
+    /// 原始 HID 句柄。
+    ///
+    /// 给需要 Windows HID 解析器（`HidP_*`）的地方用 —— 那套 API 只吃句柄，
+    /// 不接受 `HidDevice` 包装。
+    pub fn raw_handle(&self) -> HANDLE {
+        self.handle
+    }
+
     pub fn open(iface: &HidInterface, write: bool) -> Result<Self> {
         let handle = open_handle(&iface.path, true, write)
             .ok_or_else(|| anyhow!("打开 HID 设备失败：{}", iface.path))?;
