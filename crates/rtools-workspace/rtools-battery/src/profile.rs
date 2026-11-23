@@ -226,16 +226,14 @@ pub fn builtin() -> Vec<DeviceProfile> {
                     usage_page: 0xFF02,
                     response_id: 0x0A,
                     state_index: 7,
-                    // 只认这两个实测值，其它一律未知（0x10 是偶发抖动，不能当充电）
-                    charging_bit: None,
-                    state_map: [
-                        ("1".to_string(), ChargeState::Discharging),
-                        ("17".to_string(), ChargeState::Charging),
-                    ]
-                    .into_iter()
-                    .collect(),
+                    // 实测三种取值，共同规律是 bit4（0x10）= 插着线：
+                    //   0x01 拔线 / 0x10 插线（满电或涓流）/ 0x11 插线且正在充
+                    // 所以按位判断，不能用取值表 —— 用表会把 0x10 漏成未知。
+                    charging_bit: Some(0x10),
+                    state_map: Default::default(),
                     poll: Some(ChargePoll {
-                        payload_hex: "13 05 01 00 06".into(),
+                        // 这条命令实测 100% 有回复，回复的第 6 字节同步反映插线状态
+                        payload_hex: "13 07 01".into(),
                         interval_secs: 60,
                     }),
                 }),

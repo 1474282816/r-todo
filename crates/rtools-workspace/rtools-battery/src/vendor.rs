@@ -178,6 +178,7 @@ pub fn poll_state(device: &HidDevice, query: &ChargeQuery) -> Option<ChargeState
     device.write_output(&frame, 400).ok()?;
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(800);
+    let mut plugged_fallback: Option<ChargeState> = None;
     while std::time::Instant::now() < deadline {
         let Some(reply) = device.read_input(60) else {
             continue;
@@ -185,8 +186,17 @@ pub fn poll_state(device: &HidDevice, query: &ChargeQuery) -> Option<ChargeState
         if let Some(state) = parse_charge_event(&reply, query) {
             return Some(state);
         }
+        // 有些命令（如 `13 07 01`）回的是另一组报文：第 6 字节就是插线标志
+        // （实测拔线 0x00 / 插线 0x01），作为兜底。
+        if reply.len() > 5 && reply[0] == 0x13 && reply[1] == 0x07 {
+            plugged_fallback = Some(if reply[5] & 0x01 != 0 {
+                ChargeState::Charging
+            } else {
+                ChargeState::Discharging
+            });
+        }
     }
-    None
+    plugged_fallback
 }
 
 /// 20 字节状态帧的校验和（含 Report ID 在内的前 19 字节之和）。
