@@ -40,7 +40,7 @@ fn discharging_packet_is_recognised() {
 fn plugged_flag_packet_is_recognised() {
     let frame = [
         0x13, 0x0A, 0x01, 0x00, 0x04, 0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x25, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x25,
     ];
     assert_eq!(parse_charge_event(&frame, &a75()), Some(ChargeState::Charging));
 }
@@ -65,7 +65,19 @@ fn high_bit_is_not_treated_as_unknown() {
     frame[1] = 0x0A;
     frame[5] = 0x05;
     frame[7] = 0x11;
+    frame[19] = frame[..19].iter().fold(0u8, |a, b| a.wrapping_add(*b));
     assert_eq!(parse_charge_event(&frame, &a75()), Some(ChargeState::Charging));
+}
+
+/// 校验和不对的帧必须丢掉 —— 残帧、错位帧都不能变成状态。
+#[test]
+fn corrupted_checksum_is_rejected() {
+    let mut frame = [
+        0x13, 0x0A, 0x01, 0x00, 0x04, 0x05, 0x64, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x9C,
+    ];
+    frame[19] ^= 0xFF;
+    assert_eq!(parse_charge_event(&frame, &a75()), None);
 }
 
 /// 别的报文（0x07 组、别的 Report ID）不该被当成状态。

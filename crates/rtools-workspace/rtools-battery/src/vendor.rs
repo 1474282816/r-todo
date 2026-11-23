@@ -84,7 +84,10 @@ pub fn read(interfaces: &[super::hid::HidInterface], spec: &VendorSpec) -> Resul
 ///
 /// 两组帧说的是同一件事，谁先到用谁；两组都会到，重复覆盖没有副作用。
 pub fn parse_charge_event(frame: &[u8], query: &ChargeQuery) -> Option<ChargeState> {
-    if frame.len() <= 7 || frame[0] != 0x13 || frame[1] != query.response_id {
+    // 校验和先过一遍：最后一字节 = 前 19 字节之和。
+    // 不验校验和会把残帧、错位帧当成状态 —— MouseDock 的 framed() 就卡这一层，
+    // 我们上一版改写时把它丢了，属于回归。
+    if frame.len() != 20 || !checksum_ok(frame) || frame[1] != query.response_id {
         return None;
     }
     // 下标注意：`13 0A 01 00 04 05 64 11`
@@ -111,6 +114,17 @@ pub fn parse_charge_event(frame: &[u8], query: &ChargeQuery) -> Option<ChargeSta
         }
         _ => None,
     }
+}
+
+/// 20 字节状态帧的校验和（含 Report ID 在内的前 19 字节之和）。
+fn checksum_ok(frame: &[u8]) -> bool {
+    if frame.len() != 20 {
+        return false;
+    }
+    let sum = frame[..19]
+        .iter()
+        .fold(0u8, |a, b| a.wrapping_add(*b));
+    sum == frame[19]
 }
 
 /// 扫描所有 Feature 接口，把每个 RID 的数据块导出来。
